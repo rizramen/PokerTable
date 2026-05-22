@@ -18,10 +18,8 @@
     <div id="app-shell" class="app-shell">
       <header id="hero" class="hero">
         <div>
-          <h1>Local Poker Table</h1>
-          <p class="hero-copy">
-            Track stacks, pot, bets, and cards from one phone without touching a pile of chips.
-          </p>
+          <h1>PokerTable</h1>
+          <p class="hero-copy">Track local poker nights with no chips. Game's back.</p>
         </div>
         <button id="reset-game" class="ghost-button hidden" type="button">Reset Game</button>
       </header>
@@ -48,19 +46,10 @@
               <input id="starting-stack" name="startingStack" type="number" min="1" step="1" value="500" />
             </label>
             <label>
-              Total rounds
+              Total robunds
               <input id="total-rounds" name="totalRounds" type="number" min="1" step="1" value="10" />
             </label>
           </form>
-
-          <div class="add-player">
-            <input id="player-name" type="text" maxlength="20" placeholder="Add player name" />
-            <button id="add-player" type="button">Add Player</button>
-          </div>
-
-          <div class="setup-actions">
-            <button id="add-gooners" class="gooners-button" type="button">Add Gooners</button>
-          </div>
 
           <div class="setup-actions">
             <button id="start-game" type="button">Start Game</button>
@@ -72,6 +61,13 @@
               <div>
                 <h2>Players</h2>
               </div>
+            </div>
+            <div class="setup-actions">
+              <button id="add-gooners" class="gooners-button" type="button">Add Gooners</button>
+            </div>
+            <div class="add-player">
+              <input id="player-name" type="text" maxlength="20" placeholder="Add player name" />
+              <button id="add-player" type="button">Add Player</button>
             </div>
             <div id="setup-players-list" class="setup-players-list"></div>
           </div>
@@ -116,10 +112,7 @@
 
         <section class="panel action-panel game-panel">
           <div class="panel-header">
-            <div>
-              <p class="eyebrow">Action</p>
-              <h2>Current Turn</h2>
-            </div>
+            <h2>Current Move</h2>
             <div id="round-indicator" class="round-indicator hidden"></div>
           </div>
 
@@ -140,11 +133,13 @@
           </div>
 
           <div class="bet-controls turn-card">
-            <label>
-              Bet amount
-              <input id="bet-amount" type="range" min="0" max="10" step="1" value="10" />
+            <label class="bet-label-row">
+              <span>Bet amount</span>
+              <span id="bet-amount-display" class="slider-value">10</span>
             </label>
-            <p id="bet-amount-display" class="slider-value">10</p>
+            <div class="bet-slider-wrap">
+              <input id="bet-amount" type="range" min="0" max="10" step="1" value="10" />
+            </div>
           </div>
 
           <div class="turn-card in-hand-card">

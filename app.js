@@ -534,6 +534,7 @@ function renderSettings() {
   elements.setupTitle.textContent = state.gameStarted ? "Edit Game" : "Table";
   elements.startGame.classList.toggle("hidden", state.gameStarted);
   elements.startGame.disabled = state.players.length < 2;
+  elements.addGooners.classList.toggle("hidden", state.gameStarted);
 }
 
 function renderVisibility() {
@@ -555,7 +556,7 @@ function renderRoundIndicator() {
 
   const currentRound = Math.max(1, Math.min(state.handNumber, state.settings.totalRounds));
   elements.roundIndicator.innerHTML = `
-    <strong>Round ${currentRound} / ${state.settings.totalRounds}</strong>
+    <strong>${currentRound} / ${state.settings.totalRounds}</strong>
   `;
 }
 
