@@ -112,7 +112,7 @@
 
         <section class="panel action-panel game-panel">
           <div class="panel-header">
-            <h2>Current Move</h2>
+            <h2 id="action-title">Current Move</h2>
             <div id="round-indicator" class="round-indicator hidden"></div>
           </div>
 
@@ -139,6 +139,12 @@
             </label>
             <div class="bet-slider-wrap">
               <input id="bet-amount" type="range" min="0" max="10" step="1" value="10" />
+            </div>
+            <div class="bet-shortcuts">
+              <button id="bet-plus-5" class="ghost-button" type="button">+5</button>
+              <button id="bet-plus-10" class="ghost-button" type="button">+10</button>
+              <button id="bet-plus-50" class="ghost-button" type="button">+50</button>
+              <button id="bet-plus-100" class="ghost-button" type="button">+100</button>
             </div>
           </div>
 

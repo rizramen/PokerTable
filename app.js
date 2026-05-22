@@ -40,6 +40,7 @@ const elements = {
   toCallValue: document.querySelector("#to-call-value"),
   streetLabel: document.querySelector("#street-label"),
   currentPlayerLabel: document.querySelector("#current-player-label"),
+  actionTitle: document.querySelector("#action-title"),
   turnCard: document.querySelector("#turn-card"),
   roundIndicator: document.querySelector("#round-indicator"),
   streetAction: document.querySelector("#street-action"),
@@ -54,6 +55,10 @@ const elements = {
   boardCards: document.querySelector("#board-cards"),
   betAmount: document.querySelector("#bet-amount"),
   betAmountDisplay: document.querySelector("#bet-amount-display"),
+  betPlus5: document.querySelector("#bet-plus-5"),
+  betPlus10: document.querySelector("#bet-plus-10"),
+  betPlus50: document.querySelector("#bet-plus-50"),
+  betPlus100: document.querySelector("#bet-plus-100"),
   actionFold: document.querySelector("#action-fold"),
   actionCall: document.querySelector("#action-call"),
   actionBet: document.querySelector("#action-bet"),
@@ -88,6 +93,10 @@ function bindEvents() {
   elements.awardPot.addEventListener("click", awardPot);
   elements.resetGame.addEventListener("click", resetGame);
   elements.betAmount.addEventListener("input", renderBetControls);
+  elements.betPlus5.addEventListener("click", () => adjustBetAmount(5));
+  elements.betPlus10.addEventListener("click", () => adjustBetAmount(10));
+  elements.betPlus50.addEventListener("click", () => adjustBetAmount(50));
+  elements.betPlus100.addEventListener("click", () => adjustBetAmount(100));
 
   elements.actionFold.addEventListener("click", () => applyAction("fold"));
   elements.actionCall.addEventListener("click", () => applyAction("call"));
@@ -513,6 +522,7 @@ function render() {
   renderSettings();
   renderVisibility();
   renderRoundIndicator();
+  renderActionTitle();
   renderSummary();
   renderBoard();
   renderTurnCard();
@@ -558,6 +568,22 @@ function renderRoundIndicator() {
   elements.roundIndicator.innerHTML = `
     <strong>${currentRound} / ${state.settings.totalRounds}</strong>
   `;
+}
+
+function renderActionTitle() {
+  let title = "Current Move";
+
+  if (state.handPhase === "dealer") {
+    title = "Dealer";
+  } else if (state.handPhase === "showdown") {
+    title = "Showdown";
+  } else if (state.handPhase === "complete") {
+    title = "Complete";
+  } else if (state.gameStarted) {
+    title = STREETS[state.streetIndex];
+  }
+
+  elements.actionTitle.textContent = title;
 }
 
 function renderSummary() {
@@ -761,17 +787,16 @@ function renderInHandOverview() {
     if (state.currentPlayerIndex !== null && state.players[state.currentPlayerIndex]?.id === player.id) {
       badge.classList.add("in-hand-acting");
     }
-    badge.textContent = labels.join(" · ");
+    badge.innerHTML = `
+      <span class="in-hand-primary">${labels.join(" · ")}</span>
+      <span class="in-hand-secondary">${player.streetBet} this round</span>
+    `;
     elements.inHandList.appendChild(badge);
   });
 }
 
 function snapBetAmount(value) {
-  if (value <= 50) {
-    return Math.round(value / 5) * 5;
-  }
-
-  return Math.round(value / 10) * 10;
+  return Math.round(value / 5) * 5;
 }
 
 function getAllowedBetAmounts(minRaise, maxRaise) {
@@ -780,7 +805,7 @@ function getAllowedBetAmounts(minRaise, maxRaise) {
 
   while (amount <= maxRaise) {
     amounts.push(amount);
-    amount += getBetIncrement(amount);
+    amount += 5;
   }
 
   if (!amounts.includes(maxRaise)) {
@@ -788,14 +813,6 @@ function getAllowedBetAmounts(minRaise, maxRaise) {
   }
 
   return [...new Set(amounts)].sort((a, b) => a - b);
-}
-
-function getBetIncrement(amount) {
-  if (amount < 100) {
-    return amount < 50 ? 5 : 10;
-  }
-
-  return 25;
 }
 
 function findClosestBetIndex(amounts, target) {
@@ -817,6 +834,19 @@ function getSelectedBetAmount() {
   const allowedAmounts = JSON.parse(elements.betAmount.dataset.allowedAmounts ?? "[]");
   const index = parsePositiveInt(elements.betAmount.value, 0);
   return allowedAmounts[index] ?? state.settings.bigBlind;
+}
+
+function adjustBetAmount(increment) {
+  const allowedAmounts = JSON.parse(elements.betAmount.dataset.allowedAmounts ?? "[]");
+  if (!allowedAmounts.length) {
+    return;
+  }
+
+  const currentAmount = getSelectedBetAmount();
+  const targetAmount = currentAmount + increment;
+  const nextIndex = findClosestBetIndex(allowedAmounts, Math.min(targetAmount, allowedAmounts[allowedAmounts.length - 1]));
+  elements.betAmount.value = String(nextIndex);
+  renderBetControls();
 }
 
 function renderPlayers() {
