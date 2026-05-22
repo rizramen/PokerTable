@@ -1,0 +1,9 @@
+{
+  "name": "Local Poker Table",
+  "short_name": "Poker Table",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0d221a",
+  "theme_color": "#153528",
+  "icons": []
+}

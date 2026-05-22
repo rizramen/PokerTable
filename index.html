@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Local Poker Table</title>
+    <meta
+      name="description"
+      content="Mobile-first poker companion for local games with stack tracking, betting flow, and optional card dealing."
+    />
+    <meta name="theme-color" content="#153528" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app-shell" class="app-shell">
+      <header id="hero" class="hero">
+        <div>
+          <h1>Local Poker Table</h1>
+          <p class="hero-copy">
+            Track stacks, pot, bets, and cards from one phone without touching a pile of chips.
+          </p>
+        </div>
+        <button id="reset-game" class="ghost-button hidden" type="button">Reset Game</button>
+      </header>
+
+      <main class="layout">
+        <section class="panel panel-accent setup-panel">
+          <div class="panel-header">
+            <div>
+              <h2 id="setup-title">Table</h2>
+            </div>
+          </div>
+
+          <form id="setup-form" class="setup-grid">
+            <label>
+              Small blind
+              <input id="small-blind" name="smallBlind" type="number" min="1" step="1" value="5" />
+            </label>
+            <label>
+              Big blind
+              <input id="big-blind" name="bigBlind" type="number" min="1" step="1" value="10" />
+            </label>
+            <label>
+              Starting stack
+              <input id="starting-stack" name="startingStack" type="number" min="1" step="1" value="500" />
+            </label>
+            <label>
+              Total rounds
+              <input id="total-rounds" name="totalRounds" type="number" min="1" step="1" value="10" />
+            </label>
+          </form>
+
+          <div class="add-player">
+            <input id="player-name" type="text" maxlength="20" placeholder="Add player name" />
+            <button id="add-player" type="button">Add Player</button>
+          </div>
+
+          <div class="setup-actions">
+            <button id="add-gooners" class="gooners-button" type="button">Add Gooners</button>
+          </div>
+
+          <div class="setup-actions">
+            <button id="start-game" type="button">Start Game</button>
+            <button id="setup-reset-game" class="ghost-button" type="button">Reset Game</button>
+          </div>
+
+          <div class="setup-player-list">
+            <div class="panel-header">
+              <div>
+                <h2>Players</h2>
+              </div>
+            </div>
+            <div id="setup-players-list" class="setup-players-list"></div>
+          </div>
+        </section>
+
+        <section class="panel summary-panel game-panel details-panel">
+          <div class="summary-grid">
+            <article>
+              <p class="label">Street</p>
+              <p id="street-label" class="value">Preflop</p>
+            </article>
+            <article>
+              <p class="label">Pot</p>
+              <p id="pot-value" class="value">0</p>
+            </article>
+            <article>
+              <p class="label">To Call</p>
+              <p id="to-call-value" class="value">0</p>
+            </article>
+            <article>
+              <p class="label">Next Up</p>
+              <p id="current-player-label" class="value">Add players</p>
+            </article>
+          </div>
+
+          <div class="summary-actions">
+            <button id="next-street" class="ghost-button" type="button">Next Street</button>
+            <button id="rotate-dealer" class="ghost-button" type="button">Move Dealer</button>
+            <button id="award-pot" class="ghost-button" type="button">Award Pot</button>
+          </div>
+        </section>
+
+        <section class="panel board-panel game-panel details-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Cards</p>
+              <h2>Board</h2>
+            </div>
+          </div>
+          <div id="board-cards" class="board-cards"></div>
+        </section>
+
+        <section class="panel action-panel game-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Action</p>
+              <h2>Current Turn</h2>
+            </div>
+            <div id="round-indicator" class="round-indicator hidden"></div>
+          </div>
+
+          <div id="turn-card" class="turn-card empty">
+            <p>No active hand yet.</p>
+          </div>
+
+          <div class="live-stage-actions">
+            <button id="street-action" class="ghost-button" type="button">Start Preflop</button>
+          </div>
+
+          <div id="showdown-actions" class="showdown-actions hidden"></div>
+
+          <div class="action-buttons">
+            <button id="action-fold" class="danger" type="button">Fold</button>
+            <button id="action-call" class="ghost-button" type="button">Check</button>
+            <button id="action-bet" type="button">Bet / Raise</button>
+          </div>
+
+          <div class="bet-controls turn-card">
+            <label>
+              Bet amount
+              <input id="bet-amount" type="range" min="0" max="10" step="1" value="10" />
+            </label>
+            <p id="bet-amount-display" class="slider-value">10</p>
+          </div>
+
+          <div class="turn-card in-hand-card">
+            <p class="eyebrow">Still In Hand</p>
+            <div id="in-hand-list" class="in-hand-list"></div>
+          </div>
+        </section>
+
+        <section class="panel game-panel details-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Seats</p>
+              <h2>Players</h2>
+            </div>
+          </div>
+          <div id="players-list" class="players-list"></div>
+        </section>
+
+        <section class="panel game-panel details-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Pots</p>
+              <h2>Side Pot View</h2>
+            </div>
+          </div>
+          <div id="pots-list" class="pots-list"></div>
+        </section>
+
+        <section class="panel game-panel details-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Log</p>
+              <h2>Hand History</h2>
+            </div>
+          </div>
+          <div id="history-list" class="history-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <template id="player-card-template">
+      <article class="player-card">
+        <div class="player-topline">
+          <div>
+            <h3 class="player-name"></h3>
+            <p class="player-meta"></p>
+          </div>
+          <button class="tiny-button remove-player" type="button">Delete</button>
+        </div>
+        <div class="player-stats">
+          <div>
+            <p class="label">Stack</p>
+            <p class="stack-value"></p>
+          </div>
+          <div>
+            <p class="label">In Pot</p>
+            <p class="committed-value"></p>
+          </div>
+          <div>
+            <p class="label">This Round</p>
+            <p class="street-bet-value"></p>
+          </div>
+        </div>
+        <div class="player-cards"></div>
+      </article>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
