@@ -1,5 +1,19 @@
 const STORAGE_KEY = "local-poker-table-state-v1";
 const STREETS = ["Preflop", "Flop", "Turn", "River", "Showdown"];
+const HAND_PHASES = {
+  IDLE: "idle",
+  DEALER: "dealer",
+  BETTING: "betting",
+  SHOWDOWN: "showdown",
+  WINNER: "winner",
+  COMPLETE: "complete",
+};
+const PLAYER_STATUSES = {
+  ACTIVE: "active",
+  FOLDED: "folded",
+  ALL_IN: "all-in",
+  OUT: "out",
+};
 const initialState = {
   settings: {
     smallBlind: 5,
@@ -12,12 +26,13 @@ const initialState = {
   currentPlayerIndex: null,
   currentBet: 0,
   streetIndex: 0,
-  handPhase: "idle",
+  handPhase: HAND_PHASES.IDLE,
   gameStarted: false,
   board: [null, null, null, null, null],
   handActive: false,
   history: [],
   handNumber: 0,
+  handMessage: "",
   expandedPlayerStats: {},
   pendingRebuys: {},
   editSettingsDraft: null,
@@ -143,17 +158,7 @@ function onAddPlayer() {
     return;
   }
 
-  state.players.push({
-    id: generateId(),
-    name,
-    stack: state.settings.startingStack,
-    committed: 0,
-    streetBet: 0,
-    status: "active",
-    cards: [null, null],
-    acted: false,
-    stats: createPlayerStats(),
-  });
+  state.players.push(createPlayer(name, state.settings.startingStack));
 
   elements.playerName.value = "";
   logEvent(`${name} joined the table.`);
@@ -169,17 +174,7 @@ function addGooners() {
       return;
     }
 
-    state.players.push({
-      id: generateId(),
-      name,
-      stack: state.settings.startingStack,
-      committed: 0,
-      streetBet: 0,
-      status: "active",
-      cards: [null, null],
-      acted: false,
-      stats: createPlayerStats(),
-    });
+    state.players.push(createPlayer(name));
     existingNames.add(name);
   });
 
@@ -201,9 +196,10 @@ function startHand(skipValidation = false) {
   state.handActive = false;
   state.handNumber += 1;
   state.streetIndex = 0;
-  state.handPhase = "dealer";
+  state.handPhase = HAND_PHASES.DEALER;
   state.currentBet = 0;
   state.board = [null, null, null, null, null];
+  state.handMessage = "";
 
   state.players.forEach((player) => {
     const pendingRebuy = state.pendingRebuys[player.id] || 0;
@@ -215,7 +211,7 @@ function startHand(skipValidation = false) {
     player.stats.handsPlayed += player.stack > 0 ? 1 : 0;
     player.committed = 0;
     player.streetBet = 0;
-    player.status = player.stack > 0 ? "active" : "out";
+    player.status = player.stack > 0 ? PLAYER_STATUSES.ACTIVE : PLAYER_STATUSES.OUT;
     player.cards = [null, null];
     player.acted = false;
   });
@@ -234,7 +230,7 @@ function progressStreet() {
     return;
   }
 
-  if (state.handPhase === "dealer") {
+  if (state.handPhase === HAND_PHASES.DEALER) {
     beginStreet(0);
     return;
   }
@@ -244,7 +240,7 @@ function progressStreet() {
   }
 
   if (state.streetIndex >= 3) {
-    state.handPhase = "showdown";
+    state.handPhase = HAND_PHASES.SHOWDOWN;
     state.handActive = false;
     logEvent("River betting complete. Award the pot after showdown.");
     saveAndRender();
@@ -265,7 +261,7 @@ function rotateDealer() {
 }
 
 function awardPot() {
-  const contenders = state.players.filter((player) => player.status !== "out");
+  const contenders = state.players.filter((player) => player.status !== PLAYER_STATUSES.OUT);
   if (!contenders.length || totalPot() === 0) {
     return;
   }
@@ -294,20 +290,20 @@ function resetGame() {
 
 function beginStreet(streetIndex) {
   state.streetIndex = streetIndex;
-  state.handPhase = "betting";
+  state.handPhase = HAND_PHASES.BETTING;
   state.handActive = true;
 
   state.players.forEach((player) => {
     if (streetIndex > 0) {
       player.streetBet = 0;
     }
-    player.acted = player.status !== "active";
+    player.acted = player.status !== PLAYER_STATUSES.ACTIVE;
   });
 
   if (streetIndex === 0) {
     state.currentBet = Math.max(state.settings.bigBlind, maxStreetBet());
     state.players.forEach((player) => {
-      if (player.status === "active") {
+      if (player.status === PLAYER_STATUSES.ACTIVE) {
         player.acted = false;
       }
     });
@@ -328,7 +324,7 @@ function applyAction(action) {
   }
 
   const player = state.players[state.currentPlayerIndex];
-  if (!player || player.status !== "active") {
+  if (!player || player.status !== PLAYER_STATUSES.ACTIVE) {
     return;
   }
 
@@ -336,7 +332,7 @@ function applyAction(action) {
   const raiseAmount = getSelectedBetAmount();
 
   if (action === "fold") {
-    player.status = "folded";
+    player.status = PLAYER_STATUSES.FOLDED;
     player.acted = true;
     player.stats.folds += 1;
     logEvent(`${player.name} folded.`);
@@ -373,7 +369,7 @@ function applyAction(action) {
 
 function advanceTurn() {
   const unresolved = activePlayers().filter((player) => {
-    if (player.status === "all-in") {
+    if (player.status === PLAYER_STATUSES.ALL_IN) {
       return false;
     }
 
@@ -390,28 +386,32 @@ function advanceTurn() {
 }
 
 function maybeFinishHand() {
-  const contenders = state.players.filter((player) => player.status === "active" || player.status === "all-in");
+  const contenders = activePlayers();
   if (contenders.length <= 1) {
-    state.handActive = false;
-    state.currentPlayerIndex = null;
-    state.handPhase = "showdown";
-    logEvent("Hand ended. Award the pot manually from the side pot view.");
+    if (contenders.length === 1) {
+      completeHandWithWinner(contenders[0].id, {
+        autoRender: false,
+        message: getWinnerMessage(contenders[0].name),
+      });
+    }
     return;
   }
 
   if (state.streetIndex >= 3 && state.currentPlayerIndex === null) {
     state.handActive = false;
-    state.handPhase = "showdown";
+    state.handPhase = HAND_PHASES.SHOWDOWN;
+    state.handMessage = "";
     logEvent("Showdown reached. Award the pot manually from the side pot view.");
   }
 }
 
-function completeHandWithWinner(winnerId) {
+function completeHandWithWinner(winnerId, options = {}) {
   const winner = state.players.find((player) => player.id === winnerId);
   if (!winner) {
     return;
   }
 
+  const { autoRender = true, message = getWinnerMessage(winner.name) } = options;
   winner.stats.handsWon += 1;
   winner.stack += totalPot();
   state.players.forEach((player) => {
@@ -423,14 +423,32 @@ function completeHandWithWinner(winnerId) {
   state.currentBet = 0;
   state.currentPlayerIndex = null;
   state.handActive = false;
-  state.handPhase = "idle";
-  logEvent(`${winner.name} collected the pot.`);
-  saveAndRender();
+  state.handPhase = HAND_PHASES.WINNER;
+  state.handMessage = message;
+  logEvent(message);
+
+  if (autoRender) {
+    saveAndRender();
+  }
+}
+
+function continueToNextRound() {
+  if (state.handNumber >= state.settings.totalRounds) {
+    state.handPhase = HAND_PHASES.COMPLETE;
+    state.handMessage = "";
+    saveAndRender();
+    return;
+  }
+
+  if (state.players.length > 1) {
+    state.dealerIndex = (state.dealerIndex + 1) % state.players.length;
+    startHand(true);
+  }
 }
 
 function postBlind(index, amount, label) {
   const player = state.players[index];
-  if (!player || player.status === "out") {
+  if (!player || player.status === PLAYER_STATUSES.OUT) {
     return;
   }
 
@@ -444,8 +462,8 @@ function commitChips(player, amount) {
   player.stack -= actual;
   player.streetBet += actual;
   player.committed += actual;
-  if (player.stack === 0 && player.status === "active") {
-    player.status = "all-in";
+  if (player.stack === 0 && player.status === PLAYER_STATUSES.ACTIVE) {
+    player.status = PLAYER_STATUSES.ALL_IN;
   }
 }
 
@@ -493,7 +511,7 @@ function findNextPlayer(startIndex) {
   for (let step = 0; step < state.players.length; step += 1) {
     const index = (startIndex + step) % state.players.length;
     const player = state.players[index];
-    if (player.status === "active") {
+    if (player.status === PLAYER_STATUSES.ACTIVE) {
       return index;
     }
   }
@@ -503,12 +521,20 @@ function findNextPlayer(startIndex) {
 
 function resetActedFlags(exceptId) {
   state.players.forEach((player) => {
-    player.acted = player.id === exceptId || player.status !== "active";
+    player.acted = player.id === exceptId || player.status !== PLAYER_STATUSES.ACTIVE;
   });
 }
 
 function activePlayers() {
-  return state.players.filter((player) => player.status === "active" || player.status === "all-in");
+  return state.players.filter(
+    (player) => player.status === PLAYER_STATUSES.ACTIVE || player.status === PLAYER_STATUSES.ALL_IN,
+  );
+}
+
+function playersStillInHand() {
+  return state.players.filter(
+    (player) => player.status !== PLAYER_STATUSES.FOLDED && player.status !== PLAYER_STATUSES.OUT,
+  );
 }
 
 function maxStreetBet() {
@@ -535,7 +561,7 @@ function calculateSidePots() {
   return uniqueLayers
     .map((layer) => {
       const contributors = state.players.filter((player) => player.committed >= layer);
-      const eligible = contributors.filter((player) => player.status !== "folded").map((player) => player.name);
+      const eligible = contributors.filter((player) => player.status !== PLAYER_STATUSES.FOLDED).map((player) => player.name);
       const amount = (layer - previous) * contributors.length;
       previous = layer;
       return {
@@ -585,7 +611,7 @@ function renderVisibility() {
   });
   elements.hero.classList.toggle("hidden", state.gameStarted);
   elements.resetGame.classList.add("hidden");
-  document.querySelector(".action-panel")?.classList.toggle("showdown-mode", state.handPhase === "showdown");
+  document.querySelector(".action-panel")?.classList.toggle("showdown-mode", state.handPhase === HAND_PHASES.SHOWDOWN);
   elements.roundIndicator.classList.toggle("hidden", !state.gameStarted);
 }
 
@@ -604,11 +630,13 @@ function renderRoundIndicator() {
 function renderActionTitle() {
   let title = "Current Move";
 
-  if (state.handPhase === "dealer") {
+  if (state.handPhase === HAND_PHASES.DEALER) {
     title = "Dealer";
-  } else if (state.handPhase === "showdown") {
+  } else if (state.handPhase === HAND_PHASES.WINNER) {
+    title = "Winner";
+  } else if (state.handPhase === HAND_PHASES.SHOWDOWN) {
     title = "Showdown";
-  } else if (state.handPhase === "complete") {
+  } else if (state.handPhase === HAND_PHASES.COMPLETE) {
     title = "Complete";
   } else if (state.gameStarted) {
     title = STREETS[state.streetIndex];
@@ -619,10 +647,14 @@ function renderActionTitle() {
 
 function renderSummary() {
   const currentPlayer = state.currentPlayerIndex !== null ? state.players[state.currentPlayerIndex] : null;
-  elements.streetLabel.textContent = state.handPhase === "dealer" ? "Waiting" : STREETS[state.streetIndex];
+  elements.streetLabel.textContent = state.handPhase === HAND_PHASES.DEALER ? "Waiting" : STREETS[state.streetIndex];
   elements.potValue.textContent = formatChips(totalPot());
   elements.toCallValue.textContent = formatChips(state.currentBet);
-  elements.currentPlayerLabel.textContent = currentPlayer ? currentPlayer.name : "Round complete";
+  elements.currentPlayerLabel.textContent = currentPlayer
+    ? currentPlayer.name
+    : state.handPhase === HAND_PHASES.WINNER
+      ? state.handMessage.replace(/\.$/, "")
+      : "Round complete";
 }
 
 function renderBoard() {
@@ -639,7 +671,7 @@ function renderBoard() {
 
 function renderTurnCard() {
   const dealer = state.players[state.dealerIndex];
-  if (state.handPhase === "dealer" && dealer) {
+  if (state.handPhase === HAND_PHASES.DEALER && dealer) {
     elements.turnCard.className = "turn-status-wrap";
     elements.turnCard.innerHTML = `
       <div class="turn-status-grid">
@@ -657,7 +689,7 @@ function renderTurnCard() {
     return;
   }
 
-  if (state.handPhase === "showdown") {
+  if (state.handPhase === HAND_PHASES.SHOWDOWN) {
     elements.turnCard.className = "turn-status-wrap";
     elements.turnCard.innerHTML = `
       <div class="turn-status-grid">
@@ -674,7 +706,25 @@ function renderTurnCard() {
     return;
   }
 
-  if (state.handPhase === "complete") {
+  if (state.handPhase === HAND_PHASES.WINNER) {
+    elements.turnCard.className = "turn-status-wrap";
+    elements.turnCard.innerHTML = `
+      <div class="turn-status-grid">
+        <div class="turn-status-tile turn-status-main">
+          <p class="eyebrow">Hand Winner</p>
+          <h3>${state.handMessage.replace(/\.$/, "")}</h3>
+          <p>Continue when ready</p>
+        </div>
+        <div class="turn-status-tile turn-status-pot">
+          <p class="eyebrow">Pot</p>
+          <h3>${formatChips(totalPot())}</h3>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  if (state.handPhase === HAND_PHASES.COMPLETE) {
     elements.turnCard.className = "turn-status-wrap";
     elements.turnCard.innerHTML = `
       <div class="turn-status-grid">
@@ -731,12 +781,16 @@ function renderTurnCard() {
 }
 
 function getNextStreetPrompt() {
-  if (state.handPhase === "dealer") {
+  if (state.handPhase === HAND_PHASES.DEALER) {
     return "Deal the hole cards, then start preflop.";
   }
 
-  if (state.handPhase === "showdown") {
+  if (state.handPhase === HAND_PHASES.SHOWDOWN) {
     return "Showdown time. Pick the winner below.";
+  }
+
+  if (state.handPhase === HAND_PHASES.WINNER) {
+    return "Hand finished. Continue to the next round.";
   }
 
   if (state.streetIndex === 0) {
@@ -788,15 +842,18 @@ function renderStreetAction() {
   let label = "Start Preflop";
   let disabled = false;
 
-  if (state.handPhase === "idle") {
+  if (state.handPhase === HAND_PHASES.IDLE) {
     disabled = true;
-  } else if (state.handPhase === "complete") {
+  } else if (state.handPhase === HAND_PHASES.COMPLETE) {
     label = "Match Complete";
     disabled = true;
-  } else if (state.handPhase === "dealer") {
+  } else if (state.handPhase === HAND_PHASES.DEALER) {
     label = "Start Preflop";
-  } else if (state.handPhase === "showdown") {
+  } else if (state.handPhase === HAND_PHASES.SHOWDOWN) {
     label = "Showdown";
+    disabled = true;
+  } else if (state.handPhase === HAND_PHASES.WINNER) {
+    label = "Hand Complete";
     disabled = true;
   } else if (state.currentPlayerIndex !== null) {
     label = `${STREETS[state.streetIndex]} In Progress`;
@@ -818,9 +875,21 @@ function renderStreetAction() {
 
 function renderShowdownActions() {
   elements.showdownActions.innerHTML = "";
-  elements.showdownActions.classList.toggle("hidden", state.handPhase !== "showdown");
+  elements.showdownActions.classList.toggle(
+    "hidden",
+    ![HAND_PHASES.SHOWDOWN, HAND_PHASES.WINNER].includes(state.handPhase),
+  );
 
-  if (state.handPhase !== "showdown") {
+  if (![HAND_PHASES.SHOWDOWN, HAND_PHASES.WINNER].includes(state.handPhase)) {
+    return;
+  }
+
+  if (state.handPhase === HAND_PHASES.WINNER) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = state.handNumber >= state.settings.totalRounds ? "Finish match" : "Continue to next round";
+    button.addEventListener("click", continueToNextRound);
+    elements.showdownActions.appendChild(button);
     return;
   }
 
@@ -830,20 +899,13 @@ function renderShowdownActions() {
   elements.showdownActions.appendChild(label);
 
   state.players
-    .filter((player) => player.status !== "folded" && player.status !== "out")
+    .filter((player) => player.status !== PLAYER_STATUSES.FOLDED && player.status !== PLAYER_STATUSES.OUT)
     .forEach((player) => {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = player.name;
       button.addEventListener("click", () => {
         completeHandWithWinner(player.id);
-        if (state.handNumber >= state.settings.totalRounds) {
-          state.handPhase = "complete";
-          saveAndRender();
-        } else if (state.players.length > 1) {
-          state.dealerIndex = (state.dealerIndex + 1) % state.players.length;
-          startHand(true);
-        }
       });
       elements.showdownActions.appendChild(button);
     });
@@ -852,7 +914,7 @@ function renderShowdownActions() {
 function renderInHandOverview() {
   elements.inHandList.innerHTML = "";
 
-  const playersInHand = state.players.filter((player) => player.status !== "folded" && player.status !== "out");
+  const playersInHand = playersStillInHand();
   if (!playersInHand.length) {
     elements.inHandList.innerHTML = `<span class="badge">No active players</span>`;
     return;
@@ -874,10 +936,6 @@ function renderInHandOverview() {
     `;
     elements.inHandList.appendChild(badge);
   });
-}
-
-function snapBetAmount(value) {
-  return Math.round(value / 5) * 5;
 }
 
 function getAllowedBetAmounts(minRaise, maxRaise) {
@@ -1028,10 +1086,7 @@ function buildPlayerCard(player, badges) {
   });
 
   fragment.querySelector(".remove-player").addEventListener("click", () => {
-    state.players = state.players.filter((entry) => entry.id !== player.id);
-    if (state.dealerIndex >= state.players.length) {
-      state.dealerIndex = 0;
-    }
+    removePlayer(player.id);
     saveAndRender();
   });
 
@@ -1082,12 +1137,7 @@ function renderSetupPlayers() {
       );
     }
     pill.querySelector(".setup-player-delete").addEventListener("click", () => {
-      state.players = state.players.filter((entry) => entry.id !== player.id);
-      if (state.dealerIndex >= state.players.length) {
-        state.dealerIndex = 0;
-      }
-      delete state.expandedPlayerStats[player.id];
-      delete state.pendingRebuys[player.id];
+      removePlayer(player.id);
       saveAndRender();
     });
 
@@ -1106,7 +1156,7 @@ function updatePlayerStartingStack(playerId, value) {
   }
 
   player.stack = parsePositiveInt(value, 0);
-  player.status = player.stack > 0 ? "active" : "out";
+  player.status = player.stack > 0 ? PLAYER_STATUSES.ACTIVE : PLAYER_STATUSES.OUT;
   saveAndRender();
 }
 
@@ -1203,6 +1253,33 @@ function createPlayerStats() {
   };
 }
 
+function createPlayer(name, stack = initialState.settings.startingStack) {
+  return {
+    id: generateId(),
+    name,
+    stack,
+    committed: 0,
+    streetBet: 0,
+    status: stack > 0 ? PLAYER_STATUSES.ACTIVE : PLAYER_STATUSES.OUT,
+    cards: [null, null],
+    acted: false,
+    stats: createPlayerStats(),
+  };
+}
+
+function removePlayer(playerId) {
+  state.players = state.players.filter((player) => player.id !== playerId);
+  if (state.dealerIndex >= state.players.length) {
+    state.dealerIndex = 0;
+  }
+  delete state.expandedPlayerStats[playerId];
+  delete state.pendingRebuys[playerId];
+}
+
+function getWinnerMessage(name) {
+  return `${name} won the pot.`;
+}
+
 function promptForCard(current) {
   const card = window.prompt(
     "Enter a card like AS, 10H, QD, 7C. Leave blank to clear.",
@@ -1262,8 +1339,18 @@ function loadState() {
     if (!saved) {
       return structuredClone(initialState);
     }
-    const loaded = { ...structuredClone(initialState), ...JSON.parse(saved) };
+    const baseState = structuredClone(initialState);
+    const parsed = JSON.parse(saved);
+    const loaded = {
+      ...baseState,
+      ...parsed,
+      settings: {
+        ...baseState.settings,
+        ...(parsed.settings || {}),
+      },
+    };
     loaded.players = (loaded.players || []).map((player) => ({
+      ...createPlayer(player.name || "Player", parsePositiveInt(player.stack, loaded.settings.startingStack)),
       ...player,
       stats: { ...createPlayerStats(), ...(player.stats || {}) },
     }));

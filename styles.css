@@ -764,8 +764,8 @@ input[type="range"]::-moz-range-thumb {
 
 .in-hand-list {
   margin-top: 12px;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -860,17 +860,28 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .in-hand-list .badge {
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
   border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
 }
 
 .in-hand-primary,
 .in-hand-secondary {
   display: block;
   line-height: 1.2;
+  min-width: 0;
 }
 
 .in-hand-primary {
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .in-hand-secondary {
