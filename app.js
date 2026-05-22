@@ -20,6 +20,7 @@ const initialState = {
   handNumber: 0,
   expandedPlayerStats: {},
   pendingRebuys: {},
+  editSettingsDraft: null,
 };
 
 let state = loadState();
@@ -29,6 +30,7 @@ const elements = {
   smallBlind: document.querySelector("#small-blind"),
   bigBlind: document.querySelector("#big-blind"),
   startingStack: document.querySelector("#starting-stack"),
+  startingStackSetting: document.querySelector("#starting-stack-setting"),
   totalRounds: document.querySelector("#total-rounds"),
   setupTitle: document.querySelector("#setup-title"),
   playerName: document.querySelector("#player-name"),
@@ -47,6 +49,7 @@ const elements = {
   showdownActions: document.querySelector("#showdown-actions"),
   inHandList: document.querySelector("#in-hand-list"),
   startGame: document.querySelector("#start-game"),
+  confirmSettings: document.querySelector("#confirm-settings"),
   setupResetGame: document.querySelector("#setup-reset-game"),
   nextStreet: document.querySelector("#next-street"),
   rotateDealer: document.querySelector("#rotate-dealer"),
@@ -86,6 +89,7 @@ function bindEvents() {
   });
 
   elements.startGame.addEventListener("click", startHand);
+  elements.confirmSettings.addEventListener("click", confirmSettings);
   elements.streetAction.addEventListener("click", progressStreet);
   elements.setupResetGame.addEventListener("click", resetGame);
   elements.nextStreet.addEventListener("click", progressStreet);
@@ -104,11 +108,33 @@ function bindEvents() {
 }
 
 function updateSettings() {
+  if (state.gameStarted) {
+    state.editSettingsDraft = readSettingsFromInputs();
+  } else {
+    state.settings = readSettingsFromInputs();
+  }
+  saveAndRender();
+}
+
+function confirmSettings() {
+  if (!state.gameStarted) {
+    return;
+  }
+
   state.settings.smallBlind = parsePositiveInt(elements.smallBlind.value, 5);
   state.settings.bigBlind = parsePositiveInt(elements.bigBlind.value, 10);
-  state.settings.startingStack = parsePositiveInt(elements.startingStack.value, 500);
   state.settings.totalRounds = parsePositiveInt(elements.totalRounds.value, 10);
+  state.editSettingsDraft = null;
   saveAndRender();
+}
+
+function readSettingsFromInputs() {
+  return {
+    smallBlind: parsePositiveInt(elements.smallBlind.value, 5),
+    bigBlind: parsePositiveInt(elements.bigBlind.value, 10),
+    startingStack: parsePositiveInt(elements.startingStack.value, 500),
+    totalRounds: parsePositiveInt(elements.totalRounds.value, 10),
+  };
 }
 
 function onAddPlayer() {
@@ -272,7 +298,9 @@ function beginStreet(streetIndex) {
   state.handActive = true;
 
   state.players.forEach((player) => {
-    player.streetBet = 0;
+    if (streetIndex > 0) {
+      player.streetBet = 0;
+    }
     player.acted = player.status !== "active";
   });
 
@@ -537,14 +565,17 @@ function render() {
 }
 
 function renderSettings() {
-  elements.smallBlind.value = state.settings.smallBlind;
-  elements.bigBlind.value = state.settings.bigBlind;
-  elements.startingStack.value = state.settings.startingStack;
-  elements.totalRounds.value = state.settings.totalRounds;
+  const settingsView = state.gameStarted && state.editSettingsDraft ? state.editSettingsDraft : state.settings;
+  elements.smallBlind.value = settingsView.smallBlind;
+  elements.bigBlind.value = settingsView.bigBlind;
+  elements.startingStack.value = settingsView.startingStack;
+  elements.totalRounds.value = settingsView.totalRounds;
   elements.setupTitle.textContent = state.gameStarted ? "Edit Game" : "Table";
   elements.startGame.classList.toggle("hidden", state.gameStarted);
+  elements.confirmSettings.classList.toggle("hidden", !state.gameStarted);
   elements.startGame.disabled = state.players.length < 2;
   elements.addGooners.classList.toggle("hidden", state.gameStarted);
+  elements.startingStackSetting.classList.toggle("hidden", state.gameStarted);
 }
 
 function renderVisibility() {
@@ -609,48 +640,82 @@ function renderBoard() {
 function renderTurnCard() {
   const dealer = state.players[state.dealerIndex];
   if (state.handPhase === "dealer" && dealer) {
-    elements.turnCard.className = "turn-card";
+    elements.turnCard.className = "turn-status-wrap";
     elements.turnCard.innerHTML = `
-      <p class="eyebrow">Dealer</p>
-      <h3>${dealer.name}</h3>
-      <p>Deal the cards.</p>
+      <div class="turn-status-grid">
+        <div class="turn-status-tile turn-status-main">
+          <p class="eyebrow">Dealer</p>
+          <h3>${dealer.name}</h3>
+          <p>Deal the cards</p>
+        </div>
+        <div class="turn-status-tile turn-status-pot">
+          <p class="eyebrow">Pot</p>
+          <h3>${formatChips(totalPot())}</h3>
+        </div>
+      </div>
     `;
     return;
   }
 
   if (state.handPhase === "showdown") {
-    elements.turnCard.className = "turn-card";
+    elements.turnCard.className = "turn-status-wrap";
     elements.turnCard.innerHTML = `
-      <p class="eyebrow">Showdown</p>
-      <h3>Betting complete</h3>
-      <p>Reveal hands and award the pot.</p>
+      <div class="turn-status-grid">
+        <div class="turn-status-tile turn-status-main">
+          <p class="eyebrow">Showdown</p>
+          <p>Reveal hands and award the pot.</p>
+        </div>
+        <div class="turn-status-tile turn-status-pot">
+          <p class="eyebrow">Pot</p>
+          <h3>${formatChips(totalPot())}</h3>
+        </div>
+      </div>
     `;
     return;
   }
 
   if (state.handPhase === "complete") {
-    elements.turnCard.className = "turn-card";
+    elements.turnCard.className = "turn-status-wrap";
     elements.turnCard.innerHTML = `
-      <p class="eyebrow">Match Complete</p>
-      <h3>All rounds played</h3>
-      <p>The configured round limit has been reached.</p>
+      <div class="turn-status-grid">
+        <div class="turn-status-tile turn-status-main">
+          <p class="eyebrow">Match Complete</p>
+          <h3>All rounds played</h3>
+          <p>The configured round limit has been reached.</p>
+        </div>
+        <div class="turn-status-tile turn-status-pot">
+          <p class="eyebrow">Pot</p>
+          <h3>${formatChips(totalPot())}</h3>
+        </div>
+      </div>
     `;
     return;
   }
 
   const currentPlayer = state.currentPlayerIndex !== null ? state.players[state.currentPlayerIndex] : null;
   if (!currentPlayer) {
-    elements.turnCard.className = "turn-card empty";
+    elements.turnCard.className = "turn-status-wrap empty";
     elements.turnCard.innerHTML = `<p>${getNextStreetPrompt()}</p>`;
     return;
   }
 
   const toCall = Math.max(0, state.currentBet - currentPlayer.streetBet);
-  elements.turnCard.className = "turn-card";
+  elements.turnCard.className = "turn-status-wrap";
   elements.turnCard.innerHTML = `
-    <p class="eyebrow">Seat in action</p>
-    <h3>${currentPlayer.name}</h3>
-    <p>Stack ${formatChips(currentPlayer.stack)} · Needs ${formatChips(toCall)} to call</p>
+    <div class="turn-status-grid">
+      <div class="turn-status-tile turn-status-main">
+        <p class="eyebrow">Seat in action</p>
+        <h3>${currentPlayer.name}</h3>
+        <div class="turn-status-details">
+          <p class="turn-status-detail">Stack: ${formatChips(currentPlayer.stack)}</p>
+          <p class="turn-status-detail">${formatChips(toCall)} to call</p>
+        </div>
+      </div>
+      <div class="turn-status-tile turn-status-pot">
+        <p class="eyebrow">Pot</p>
+        <h3>${formatChips(totalPot())}</h3>
+      </div>
+    </div>
   `;
 }
 
@@ -748,12 +813,17 @@ function renderShowdownActions() {
     return;
   }
 
+  const label = document.createElement("p");
+  label.className = "showdown-label";
+  label.textContent = "Winner:";
+  elements.showdownActions.appendChild(label);
+
   state.players
     .filter((player) => player.status !== "folded" && player.status !== "out")
     .forEach((player) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = `${player.name} Wins Pot`;
+      button.textContent = player.name;
       button.addEventListener("click", () => {
         completeHandWithWinner(player.id);
         if (state.handNumber >= state.settings.totalRounds) {
@@ -968,7 +1038,7 @@ function renderSetupPlayers() {
 
   state.players.forEach((player) => {
     const pill = document.createElement("div");
-    const isOpen = Boolean(state.gameStarted && state.expandedPlayerStats[player.id]);
+    const isOpen = Boolean(state.expandedPlayerStats[player.id]);
     pill.className = `setup-player-pill${isOpen ? " open" : ""}${player.stack === 0 ? " out-of-chips" : ""}`;
     pill.dataset.playerId = player.id;
     pill.innerHTML = `
@@ -982,17 +1052,17 @@ function renderSetupPlayers() {
           <button class="setup-player-control setup-player-delete" type="button">X</button>
         </div>
       </div>
-      ${isOpen ? renderSetupPlayerStats(player) : ""}
+      ${isOpen ? renderSetupPlayerDetails(player) : ""}
     `;
 
     const expandButton = pill.querySelector(".setup-player-expand");
+    const stackInput = pill.querySelector(".setup-player-stack-input");
     pill.querySelector(".setup-player-up").addEventListener("click", () => movePlayerByOffset(player.id, -1));
     pill.querySelector(".setup-player-down").addEventListener("click", () => movePlayerByOffset(player.id, 1));
-    if (state.gameStarted) {
-      expandButton.addEventListener("click", () => toggleExpandedPlayerStats(player.id));
-    } else {
-      expandButton.classList.add("hidden");
+    if (stackInput) {
+      stackInput.addEventListener("change", () => updatePlayerStartingStack(player.id, stackInput.value));
     }
+    expandButton.addEventListener("click", () => toggleExpandedPlayerStats(player.id));
     const addChipsButton = pill.querySelector(".setup-player-add-chips");
     if (addChipsButton) {
       const amountSelect = pill.querySelector(".setup-player-rebuy-amount");
@@ -1016,6 +1086,17 @@ function renderSetupPlayers() {
 
     elements.setupPlayersList.appendChild(pill);
   });
+}
+
+function updatePlayerStartingStack(playerId, value) {
+  const player = state.players.find((entry) => entry.id === playerId);
+  if (!player || state.gameStarted) {
+    return;
+  }
+
+  player.stack = parsePositiveInt(value, 0);
+  player.status = player.stack > 0 ? "active" : "out";
+  saveAndRender();
 }
 
 function movePlayerByOffset(playerId, offset) {
@@ -1064,6 +1145,26 @@ function renderSetupPlayerStats(player) {
       </div>
     </div>
   `;
+}
+
+function renderSetupPlayerDetails(player) {
+  if (!state.gameStarted) {
+    return `
+      <div class="setup-player-stack-editor">
+        <label class="setup-player-stack-label" for="setup-player-stack-${player.id}">Starting stack</label>
+        <input
+          id="setup-player-stack-${player.id}"
+          class="setup-player-stack-input"
+          type="number"
+          min="0"
+          step="1"
+          value="${player.stack}"
+        />
+      </div>
+    `;
+  }
+
+  return renderSetupPlayerStats(player);
 }
 
 function toggleExpandedPlayerStats(playerId) {

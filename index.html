@@ -27,36 +27,6 @@
 
       <main class="layout">
         <section class="panel panel-accent setup-panel">
-          <div class="panel-header">
-            <div>
-              <h2 id="setup-title">Table</h2>
-            </div>
-          </div>
-
-          <form id="setup-form" class="setup-grid">
-            <label>
-              Small blind
-              <input id="small-blind" name="smallBlind" type="number" min="1" step="1" value="5" />
-            </label>
-            <label>
-              Big blind
-              <input id="big-blind" name="bigBlind" type="number" min="1" step="1" value="10" />
-            </label>
-            <label>
-              Starting stack
-              <input id="starting-stack" name="startingStack" type="number" min="1" step="1" value="500" />
-            </label>
-            <label>
-              Total rounds
-              <input id="total-rounds" name="totalRounds" type="number" min="1" step="1" value="10" />
-            </label>
-          </form>
-
-          <div class="setup-actions">
-            <button id="start-game" type="button">Start Game</button>
-            <button id="setup-reset-game" class="ghost-button" type="button">Reset Game</button>
-          </div>
-
           <div class="setup-player-list">
             <div class="panel-header">
               <div>
@@ -66,11 +36,44 @@
             <div class="setup-actions">
               <button id="add-gooners" class="gooners-button" type="button">Add Gooners</button>
             </div>
+            <div id="setup-players-list" class="setup-players-list"></div>
             <div class="add-player">
               <input id="player-name" type="text" maxlength="20" placeholder="Add player name" />
               <button id="add-player" type="button">Add Player</button>
             </div>
-            <div id="setup-players-list" class="setup-players-list"></div>
+          </div>
+
+          <div class="setup-table-section">
+            <div class="panel-header">
+              <div>
+                <h2 id="setup-title">Table</h2>
+              </div>
+            </div>
+
+            <form id="setup-form" class="setup-grid">
+              <label>
+                Small blind
+                <input id="small-blind" name="smallBlind" type="number" min="1" step="1" value="5" />
+              </label>
+              <label>
+                Big blind
+                <input id="big-blind" name="bigBlind" type="number" min="1" step="1" value="10" />
+              </label>
+              <label id="starting-stack-setting">
+                Starting stack
+                <input id="starting-stack" name="startingStack" type="number" min="1" step="1" value="500" />
+              </label>
+              <label>
+                Total rounds
+                <input id="total-rounds" name="totalRounds" type="number" min="1" step="1" value="10" />
+              </label>
+            </form>
+
+            <div class="setup-actions">
+              <button id="start-game" type="button">Start Game</button>
+              <button id="confirm-settings" class="hidden" type="button">Confirm Changes</button>
+              <button id="setup-reset-game" class="ghost-button" type="button">Reset Game</button>
+            </div>
           </div>
         </section>
 
@@ -117,7 +120,7 @@
             <div id="round-indicator" class="round-indicator hidden"></div>
           </div>
 
-          <div id="turn-card" class="turn-card empty">
+          <div id="turn-card" class="turn-status-wrap empty">
             <p>No active hand yet.</p>
           </div>
 
