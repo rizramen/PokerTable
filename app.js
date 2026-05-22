@@ -694,8 +694,19 @@ function renderTurnCard() {
 
   const currentPlayer = state.currentPlayerIndex !== null ? state.players[state.currentPlayerIndex] : null;
   if (!currentPlayer) {
-    elements.turnCard.className = "turn-status-wrap empty";
-    elements.turnCard.innerHTML = `<p>${getNextStreetPrompt()}</p>`;
+    elements.turnCard.className = "turn-status-wrap";
+    elements.turnCard.innerHTML = `
+      <div class="turn-status-grid">
+        <div class="turn-status-tile turn-status-main">
+          <p class="eyebrow">${STREETS[state.streetIndex]}</p>
+          <p>${getNextStreetPrompt()}</p>
+        </div>
+        <div class="turn-status-tile turn-status-pot">
+          <p class="eyebrow">Pot</p>
+          <h3>${formatChips(totalPot())}</h3>
+        </div>
+      </div>
+    `;
     return;
   }
 
@@ -729,15 +740,15 @@ function getNextStreetPrompt() {
   }
 
   if (state.streetIndex === 0) {
-    return "Preflop complete. Deal the flop cards.";
+    return " Deal the flop cards";
   }
 
   if (state.streetIndex === 1) {
-    return "Flop complete. Deal the turn card.";
+    return "Deal the turn card";
   }
 
   if (state.streetIndex === 2) {
-    return "Turn complete. Deal the river card.";
+    return "Deal the river card";
   }
 
   return "Round complete. Continue when ready.";
@@ -815,7 +826,7 @@ function renderShowdownActions() {
 
   const label = document.createElement("p");
   label.className = "showdown-label";
-  label.textContent = "Winner:";
+  label.textContent = "Who's the winner?";
   elements.showdownActions.appendChild(label);
 
   state.players
