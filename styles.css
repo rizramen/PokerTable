@@ -10,6 +10,8 @@
   --accent-green: #7fa99b;
   --accent-blue: #6c8ca1;
   --accent-pink: #b86e7e;
+  --accent-yellow: #f3cb57;
+  --accent-yellow-strong: #ffd84d;
   --shadow: 0 20px 48px rgba(0, 0, 0, 0.3);
   --shadow-soft: 0 0 20px rgba(108, 140, 161, 0.15);
   --radius: 18px;
@@ -70,6 +72,15 @@ button,
   -webkit-backdrop-filter: blur(14px);
 }
 
+button:not(.tiny-button):not(.setup-player-control),
+.button-like {
+  height: 3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 button:hover,
 .button-like:hover {
   background: rgba(108, 140, 161, 0.1);
@@ -96,8 +107,56 @@ button:disabled {
   color: #e5c3cc;
 }
 
+.action-buttons button,
+#action-fold,
+#action-call,
+#action-bet {
+  height: 3.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.15;
+  white-space: normal;
+  word-break: break-word;
+}
+
+#action-call.action-selected-call {
+  background: rgba(108, 140, 161, 0.3);
+  border-color: rgba(162, 196, 218, 0.88);
+  color: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(185, 221, 242, 0.22),
+    0 0 18px rgba(108, 140, 161, 0.24);
+}
+
+#action-bet {
+  background: rgba(243, 203, 87, 0.22);
+  border-color: rgba(243, 203, 87, 0.5);
+  color: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(255, 231, 153, 0.18),
+    0 0 18px rgba(243, 203, 87, 0.18);
+}
+
+#action-bet:hover {
+  background: rgba(243, 203, 87, 0.3);
+  border-color: var(--accent-yellow-strong);
+  color: #ffffff;
+}
+
+#action-bet.action-selected-bet {
+  background: linear-gradient(180deg, rgba(255, 216, 77, 0.42), rgba(243, 203, 87, 0.24));
+  border-color: var(--accent-yellow-strong);
+  color: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(255, 243, 196, 0.5),
+    0 0 22px rgba(255, 216, 77, 0.32),
+    0 0 40px rgba(243, 203, 87, 0.2);
+}
+
 .gooners-button {
-  width: 100%;
+  flex: 1 1 0;
   justify-content: center;
   background: rgba(214, 120, 148, 0.34);
   color: #fff2f6;
@@ -170,6 +229,92 @@ input[type="range"]::-moz-range-thumb {
   margin: 0 auto;
 }
 
+.app-shell.game-live {
+  transition: filter 0.35s ease, transform 0.35s ease;
+}
+
+.app-shell.game-live.phase-flop {
+  filter:
+    drop-shadow(0 0 22px rgba(76, 156, 110, 0.12))
+    drop-shadow(0 0 60px rgba(76, 156, 110, 0.08));
+}
+
+.app-shell.game-live.phase-flop .panel {
+  background:
+    linear-gradient(180deg, rgba(31, 54, 42, 0.64), rgba(24, 30, 36, 0.56)),
+    var(--panel);
+}
+
+.app-shell.game-live.phase-turn {
+  filter:
+    drop-shadow(0 0 22px rgba(71, 122, 170, 0.14))
+    drop-shadow(0 0 60px rgba(71, 122, 170, 0.08));
+}
+
+.app-shell.game-live.phase-turn .panel {
+  background:
+    linear-gradient(180deg, rgba(28, 42, 56, 0.66), rgba(24, 30, 36, 0.56)),
+    var(--panel);
+}
+
+.app-shell.game-live.phase-river {
+  filter:
+    drop-shadow(0 0 24px rgba(186, 126, 78, 0.16))
+    drop-shadow(0 0 64px rgba(186, 126, 78, 0.08));
+}
+
+.app-shell.game-live.phase-river .panel {
+  background:
+    linear-gradient(180deg, rgba(59, 40, 29, 0.66), rgba(24, 30, 36, 0.56)),
+    var(--panel);
+}
+
+.app-shell.game-live.phase-showdown {
+  filter:
+    drop-shadow(0 0 26px rgba(243, 203, 87, 0.18))
+    drop-shadow(0 0 72px rgba(243, 203, 87, 0.1));
+}
+
+.app-shell.game-live.phase-showdown .panel {
+  background:
+    linear-gradient(180deg, rgba(70, 57, 22, 0.7), rgba(24, 30, 36, 0.56)),
+    var(--panel);
+}
+
+.app-shell:not(.game-live) .layout {
+  display: block;
+}
+
+.app-shell:not(.game-live) .setup-panel {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+}
+
+@media (min-width: 760px) and (min-aspect-ratio: 5/4) {
+  .app-shell:not(.game-live) .setup-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    align-items: start;
+    height: min(calc(100dvh - 140px), calc(100vw * 0.62));
+  }
+
+  .app-shell:not(.game-live) .setup-player-list,
+  .app-shell:not(.game-live) .setup-table-section {
+    margin-top: 0;
+  }
+
+  .app-shell:not(.game-live) .setup-player-list {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .app-shell:not(.game-live) .setup-table-section {
+    grid-column: 1;
+    grid-row: 1;
+  }
+}
+
 @media (min-width: 900px) {
   body {
     padding-left: 24px;
@@ -178,15 +323,6 @@ input[type="range"]::-moz-range-thumb {
 
   .app-shell {
     width: min(100%, 1400px);
-  }
-
-  .app-shell:not(.game-live) .layout {
-    display: block;
-  }
-
-  .app-shell:not(.game-live) .setup-panel {
-    width: min(100%, 1120px);
-    margin: 0 auto;
   }
 }
 
@@ -235,10 +371,11 @@ input[type="range"]::-moz-range-thumb {
 
 .hero-copy {
   width: min(46rem, 100%);
-  margin: 10px 0 0;
+  margin: 10px auto 0;
   color: var(--text-muted);
   font-size: 0.84rem;
   white-space: nowrap;
+  text-align: center;
 }
 
 .eyebrow,
@@ -293,9 +430,6 @@ input[type="range"]::-moz-range-thumb {
   order: 1;
   display: flex;
   flex-direction: column;
-  min-height: calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  max-height: calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  overflow-y: auto;
 }
 
 .app-shell.game-live .setup-panel {
@@ -354,6 +488,10 @@ input[type="range"]::-moz-range-thumb {
 
 .setup-actions {
   margin-top: 14px;
+}
+
+.setup-player-list .setup-actions {
+  display: flex;
 }
 
 .app-shell.game-live .setup-actions {
@@ -478,6 +616,10 @@ input[type="range"]::-moz-range-thumb {
   gap: 8px 12px;
 }
 
+.setup-player-stats-compact {
+  align-items: end;
+}
+
 .setup-player-stat {
   min-width: 0;
 }
@@ -507,6 +649,12 @@ input[type="range"]::-moz-range-thumb {
   gap: 10px;
 }
 
+.setup-player-rebuy-compact {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .setup-player-rebuy p {
   margin: 0;
   color: var(--text-muted);
@@ -517,11 +665,12 @@ input[type="range"]::-moz-range-thumb {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
 }
 
-.setup-player-rebuy-controls select {
-  width: auto;
-  min-width: 88px;
+.setup-player-rebuy-controls .setup-player-rebuy-amount {
+  width: 100%;
+  min-width: 0;
   margin-top: 0;
   padding: 8px 10px;
 }
@@ -564,6 +713,26 @@ input[type="range"]::-moz-range-thumb {
 
 .summary-grid article {
   padding: 14px;
+}
+
+.summary-grid article:nth-child(odd) {
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.summary-grid article:nth-child(even) {
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.summary-grid article:nth-child(odd) .label,
+.summary-grid article:nth-child(odd) .value {
+  transform: translateX(8px);
+}
+
+.summary-grid article:nth-child(even) .label,
+.summary-grid article:nth-child(even) .value {
+  transform: translateX(-8px);
 }
 
 .value {
@@ -655,6 +824,37 @@ input[type="range"]::-moz-range-thumb {
   text-align: center;
 }
 
+.showdown-status-main {
+  text-align: center;
+  position: relative;
+}
+
+.showdown-status-copy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+  padding: 16px;
+}
+
+.showdown-status-grid {
+  align-items: stretch;
+}
+
+.showdown-status-grid .turn-status-tile {
+  height: 100%;
+}
+
+@media (max-width: 500px) {
+  .showdown-status-grid .turn-status-tile {
+    aspect-ratio: 1 / 1;
+  }
+}
+
 .turn-status-details {
   margin-top: 10px;
 }
@@ -705,13 +905,102 @@ input[type="range"]::-moz-range-thumb {
   width: 100%;
 }
 
+.showdown-actions .showdown-selected {
+  background: rgba(108, 140, 161, 0.3);
+  border-color: rgba(162, 196, 218, 0.88);
+  color: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(185, 221, 242, 0.22),
+    0 0 18px rgba(108, 140, 161, 0.24);
+}
+
 .app-shell.game-live .action-panel.showdown-mode .action-buttons,
 .app-shell.game-live .action-panel.showdown-mode .bet-controls,
-.app-shell.game-live .action-panel.showdown-mode .in-hand-card {
+.app-shell.game-live .action-panel.showdown-mode .in-hand-card,
+.app-shell.game-live .action-panel.showdown-mode .live-stage-actions {
+  display: none;
+}
+
+.app-shell.game-live .action-panel.winner-mode .action-buttons,
+.app-shell.game-live .action-panel.winner-mode .bet-controls,
+.app-shell.game-live .action-panel.winner-mode .in-hand-card,
+.app-shell.game-live .action-panel.winner-mode .live-stage-actions,
+.app-shell.game-live .action-panel.winner-mode .showdown-actions {
   display: none;
 }
 
 .turn-status-wrap.empty {
+  color: var(--text-muted);
+}
+
+.winner-results-grid {
+  grid-template-columns: 1fr;
+}
+
+.winner-result-card h3 {
+  color: var(--accent-yellow-strong);
+}
+
+.winner-result-list {
+  display: grid;
+  gap: 8px;
+}
+
+.winner-result-list p {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.winner-stacks-card .eyebrow {
+  margin-bottom: 12px;
+}
+
+.winner-stacks-card button {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.winner-stack-list {
+  display: grid;
+  gap: 10px;
+}
+
+.winner-stack-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(131, 142, 150, 0.14);
+}
+
+.winner-stack-row span,
+.winner-stack-row strong {
+  color: var(--text-primary);
+}
+
+.winner-stack-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.winner-stack-trend {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.winner-stack-trend-up {
+  color: #7fd48b;
+}
+
+.winner-stack-trend-down {
+  color: #f09a9a;
+}
+
+.winner-stack-trend-flat {
   color: var(--text-muted);
 }
 
@@ -721,6 +1010,10 @@ input[type="range"]::-moz-range-thumb {
 
 .app-shell.game-live .action-panel .bet-controls {
   margin-top: 14px;
+}
+
+.bet-controls.bet-controls-disabled {
+  opacity: 0.42;
 }
 
 .bet-label-row {
@@ -754,6 +1047,13 @@ input[type="range"]::-moz-range-thumb {
     0 0 20px rgba(127, 169, 155, 0.16);
 }
 
+.slider-value.raise-ready {
+  color: var(--accent-yellow-strong);
+  text-shadow:
+    0 0 10px rgba(255, 216, 77, 0.34),
+    0 0 20px rgba(243, 203, 87, 0.22);
+}
+
 .in-hand-card {
   margin-top: 14px;
 }
@@ -783,6 +1083,17 @@ input[type="range"]::-moz-range-thumb {
 
 .in-hand-acting .in-hand-primary {
   color: #ffc334;
+}
+
+.in-hand-all-in {
+  opacity: 0.58;
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(131, 142, 150, 0.24);
+}
+
+.in-hand-all-in .in-hand-primary,
+.in-hand-all-in .in-hand-secondary {
+  color: var(--text-muted);
 }
 
 .action-buttons {
@@ -871,7 +1182,8 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .in-hand-primary,
-.in-hand-secondary {
+.in-hand-secondary,
+.in-hand-role {
   display: block;
   line-height: 1.2;
   min-width: 0;
@@ -888,6 +1200,16 @@ input[type="range"]::-moz-range-thumb {
   margin-top: 3px;
   color: var(--accent-green);
   opacity: 0.9;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.in-hand-role {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .pots-list article,

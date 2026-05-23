@@ -36,6 +36,19 @@ const initialState = {
   expandedPlayerStats: {},
   pendingRebuys: {},
   editSettingsDraft: null,
+  handStartStacks: {},
+  lastFullRaise: 0,
+  showdownPots: [],
+  showdownResults: [],
+  selectedShowdownWinnerIds: [],
+  showdownSplitMode: false,
+  selectedAction: "call",
+  betControlAmount: 0,
+  betControlPlayerId: null,
+  betControlToCall: 0,
+  typedBetInput: "",
+  typedBetInputAt: 0,
+  typedBetInputPlayerId: null,
 };
 
 let state = loadState();
@@ -51,6 +64,7 @@ const elements = {
   playerName: document.querySelector("#player-name"),
   addPlayer: document.querySelector("#add-player"),
   addGooners: document.querySelector("#add-gooners"),
+  addWg: document.querySelector("#add-wg"),
   setupPlayersList: document.querySelector("#setup-players-list"),
   playersList: document.querySelector("#players-list"),
   potValue: document.querySelector("#pot-value"),
@@ -77,6 +91,7 @@ const elements = {
   betPlus10: document.querySelector("#bet-plus-10"),
   betPlus50: document.querySelector("#bet-plus-50"),
   betPlus100: document.querySelector("#bet-plus-100"),
+  betControls: document.querySelector(".bet-controls"),
   actionFold: document.querySelector("#action-fold"),
   actionCall: document.querySelector("#action-call"),
   actionBet: document.querySelector("#action-bet"),
@@ -96,6 +111,7 @@ function bindEvents() {
   elements.totalRounds.addEventListener("change", updateSettings);
   elements.addPlayer.addEventListener("click", onAddPlayer);
   elements.addGooners.addEventListener("click", addGooners);
+  elements.addWg.addEventListener("click", addWG);
   elements.playerName.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -111,15 +127,16 @@ function bindEvents() {
   elements.rotateDealer.addEventListener("click", rotateDealer);
   elements.awardPot.addEventListener("click", awardPot);
   elements.resetGame.addEventListener("click", resetGame);
-  elements.betAmount.addEventListener("input", renderBetControls);
+  elements.betAmount.addEventListener("input", onBetSliderInput);
   elements.betPlus5.addEventListener("click", () => adjustBetAmount(5));
   elements.betPlus10.addEventListener("click", () => adjustBetAmount(10));
   elements.betPlus50.addEventListener("click", () => adjustBetAmount(50));
   elements.betPlus100.addEventListener("click", () => adjustBetAmount(100));
 
   elements.actionFold.addEventListener("click", () => applyAction("fold"));
-  elements.actionCall.addEventListener("click", () => applyAction("call"));
-  elements.actionBet.addEventListener("click", () => applyAction("raise"));
+  elements.actionCall.addEventListener("click", () => onActionButtonClick("call"));
+  elements.actionBet.addEventListener("click", () => onActionButtonClick("raise"));
+  window.addEventListener("keydown", onGlobalKeydown);
 }
 
 function updateSettings() {
@@ -182,6 +199,23 @@ function addGooners() {
   saveAndRender();
 }
 
+function addWG() {
+  const names = ["jannis", "riz"];
+  const existingNames = new Set(state.players.map((player) => player.name.toLowerCase()));
+
+  names.forEach((name) => {
+    if (existingNames.has(name)) {
+      return;
+    }
+
+    state.players.push(createPlayer(name));
+    existingNames.add(name);
+  });
+
+  logEvent("Added WG preset.");
+  saveAndRender();
+}
+
 function startHand(skipValidation = false) {
   if (!skipValidation && state.players.length < 2) {
     window.alert("You need to add at least 2 players before starting the game.");
@@ -200,6 +234,12 @@ function startHand(skipValidation = false) {
   state.currentBet = 0;
   state.board = [null, null, null, null, null];
   state.handMessage = "";
+  state.handStartStacks = {};
+  state.lastFullRaise = state.settings.bigBlind;
+  state.showdownPots = [];
+  state.showdownResults = [];
+  state.selectedShowdownWinnerIds = [];
+  state.showdownSplitMode = false;
 
   state.players.forEach((player) => {
     const pendingRebuy = state.pendingRebuys[player.id] || 0;
@@ -214,6 +254,8 @@ function startHand(skipValidation = false) {
     player.status = player.stack > 0 ? PLAYER_STATUSES.ACTIVE : PLAYER_STATUSES.OUT;
     player.cards = [null, null];
     player.acted = false;
+    player.canRaise = player.status === PLAYER_STATUSES.ACTIVE;
+    state.handStartStacks[player.id] = player.stack;
   });
 
   postBlind(getSmallBlindIndex(), state.settings.smallBlind, "small blind");
@@ -240,9 +282,7 @@ function progressStreet() {
   }
 
   if (state.streetIndex >= 3) {
-    state.handPhase = HAND_PHASES.SHOWDOWN;
-    state.handActive = false;
-    logEvent("River betting complete. Award the pot after showdown.");
+    enterShowdown("River betting complete. Award the pots below.");
     saveAndRender();
     return;
   }
@@ -261,8 +301,13 @@ function rotateDealer() {
 }
 
 function awardPot() {
-  const contenders = state.players.filter((player) => player.status !== PLAYER_STATUSES.OUT);
+  const contenders = playersStillInHand();
   if (!contenders.length || totalPot() === 0) {
+    return;
+  }
+
+  if (calculateSidePots().length > 1) {
+    window.alert("Use the showdown pot selector to award main and side pots separately.");
     return;
   }
 
@@ -292,12 +337,14 @@ function beginStreet(streetIndex) {
   state.streetIndex = streetIndex;
   state.handPhase = HAND_PHASES.BETTING;
   state.handActive = true;
+  state.lastFullRaise = Math.max(state.settings.bigBlind, 1);
 
   state.players.forEach((player) => {
     if (streetIndex > 0) {
       player.streetBet = 0;
     }
     player.acted = player.status !== PLAYER_STATUSES.ACTIVE;
+    player.canRaise = player.status === PLAYER_STATUSES.ACTIVE;
   });
 
   if (streetIndex === 0) {
@@ -329,37 +376,62 @@ function applyAction(action) {
   }
 
   const toCall = Math.max(0, state.currentBet - player.streetBet);
-  const raiseAmount = getSelectedBetAmount();
+  const callAmount = Math.min(toCall, player.stack);
+  const selectedAmount = getSelectedBetAmount();
+  const canPlayerRaise = player.canRaise !== false;
 
   if (action === "fold") {
     player.status = PLAYER_STATUSES.FOLDED;
     player.acted = true;
+    player.canRaise = false;
     player.stats.folds += 1;
     logEvent(`${player.name} folded.`);
   }
 
   if (action === "call" && toCall === 0) {
     player.acted = true;
+    player.canRaise = false;
     player.stats.checks += 1;
     logEvent(`${player.name} checked.`);
   }
 
   if (action === "call" && toCall > 0) {
-    commitChips(player, toCall);
+    commitChips(player, callAmount);
     player.acted = true;
+    player.canRaise = false;
     player.stats.calls += 1;
-    logEvent(`${player.name} called ${toCall}.`);
+    logEvent(`${player.name} called ${callAmount}.`);
   }
 
   if (action === "raise") {
-    const totalTarget = Math.max(state.currentBet + raiseAmount, player.streetBet + raiseAmount);
-    const needed = Math.max(0, totalTarget - player.streetBet);
-    commitChips(player, needed);
+    const minimumRaiseCommitment = getMinimumRaiseCommitment(player, toCall);
+    const previousBet = state.currentBet;
+    const raiseIncrement = player.streetBet + selectedAmount - previousBet;
+    const isAllInAttempt = selectedAmount === player.stack;
+    const isFullRaise = raiseIncrement >= state.lastFullRaise;
+
+    if (!canPlayerRaise || selectedAmount <= callAmount) {
+      return;
+    }
+
+    if (!isAllInAttempt && selectedAmount < minimumRaiseCommitment) {
+      return;
+    }
+
+    commitChips(player, selectedAmount);
     state.currentBet = player.streetBet;
-    resetActedFlags(player.id);
     player.acted = true;
+    player.canRaise = false;
     player.stats.raises += 1;
-    logEvent(`${player.name} raised to ${player.streetBet}.`);
+
+    if (isFullRaise) {
+      state.lastFullRaise = raiseIncrement;
+      resetActedFlags(player.id);
+      resetRaiseFlags(player.id);
+      logEvent(`${player.name} raised to ${player.streetBet}.`);
+    } else {
+      logEvent(`${player.name} went all-in to ${player.streetBet}.`);
+    }
   }
 
   advanceTurn();
@@ -397,11 +469,14 @@ function maybeFinishHand() {
     return;
   }
 
+  const playersAbleToBet = contenders.filter((player) => player.status === PLAYER_STATUSES.ACTIVE);
+  if (state.currentPlayerIndex === null && playersAbleToBet.length <= 1) {
+    enterShowdown("All remaining action is closed. Go to showdown.");
+    return;
+  }
+
   if (state.streetIndex >= 3 && state.currentPlayerIndex === null) {
-    state.handActive = false;
-    state.handPhase = HAND_PHASES.SHOWDOWN;
-    state.handMessage = "";
-    logEvent("Showdown reached. Award the pot manually from the side pot view.");
+    enterShowdown("Showdown reached. Award the pots below.");
   }
 }
 
@@ -418,6 +493,7 @@ function completeHandWithWinner(winnerId, options = {}) {
     player.committed = 0;
     player.streetBet = 0;
     player.acted = false;
+    player.canRaise = player.status === PLAYER_STATUSES.ACTIVE;
   });
   state.board = [null, null, null, null, null];
   state.currentBet = 0;
@@ -425,6 +501,8 @@ function completeHandWithWinner(winnerId, options = {}) {
   state.handActive = false;
   state.handPhase = HAND_PHASES.WINNER;
   state.handMessage = message;
+  state.showdownPots = [];
+  state.showdownResults = [];
   logEvent(message);
 
   if (autoRender) {
@@ -500,6 +578,10 @@ function getFirstToActPreflop() {
 }
 
 function getFirstToActPostflop() {
+  if (state.players.length <= 2) {
+    return state.dealerIndex;
+  }
+
   return seatOffset(1);
 }
 
@@ -525,6 +607,12 @@ function resetActedFlags(exceptId) {
   });
 }
 
+function resetRaiseFlags(exceptId) {
+  state.players.forEach((player) => {
+    player.canRaise = player.id !== exceptId && player.status === PLAYER_STATUSES.ACTIVE;
+  });
+}
+
 function activePlayers() {
   return state.players.filter(
     (player) => player.status === PLAYER_STATUSES.ACTIVE || player.status === PLAYER_STATUSES.ALL_IN,
@@ -546,30 +634,219 @@ function totalPot() {
 }
 
 function calculateSidePots() {
+  const committedPlayers = state.players.filter((player) => player.committed > 0);
+  if (!committedPlayers.length) {
+    return [];
+  }
+
+  const eligiblePlayers = state.players.filter((player) => player.status !== PLAYER_STATUSES.FOLDED && player.status !== PLAYER_STATUSES.OUT);
+  const hasAllInPlayer = committedPlayers.some((player) => player.status === PLAYER_STATUSES.ALL_IN);
+
+  if (!hasAllInPlayer) {
+    return [
+      {
+        label: "Main Pot",
+        amount: totalPot(),
+        eligible: eligiblePlayers.map((player) => player.name),
+        eligibleIds: eligiblePlayers.map((player) => player.id),
+      },
+    ].filter((pot) => pot.amount > 0);
+  }
+
   const layers = state.players
     .filter((player) => player.committed > 0)
     .map((player) => player.committed)
     .sort((a, b) => a - b);
 
-  if (!layers.length) {
-    return [];
-  }
-
   const uniqueLayers = [...new Set(layers)];
   let previous = 0;
 
   return uniqueLayers
-    .map((layer) => {
+    .map((layer, index) => {
       const contributors = state.players.filter((player) => player.committed >= layer);
-      const eligible = contributors.filter((player) => player.status !== PLAYER_STATUSES.FOLDED).map((player) => player.name);
+      const eligiblePlayers = contributors.filter((player) => player.status !== PLAYER_STATUSES.FOLDED);
       const amount = (layer - previous) * contributors.length;
       previous = layer;
       return {
+        label: index === 0 ? "Main Pot" : `Side Pot ${index}`,
         amount,
-        eligible,
+        eligible: eligiblePlayers.map((player) => player.name),
+        eligibleIds: eligiblePlayers.map((player) => player.id),
       };
     })
     .filter((pot) => pot.amount > 0);
+}
+
+function enterShowdown(message) {
+  state.handActive = false;
+  state.handPhase = HAND_PHASES.SHOWDOWN;
+  state.handMessage = "";
+  state.currentPlayerIndex = null;
+  state.showdownPots = calculateSidePots();
+  state.showdownResults = [];
+  state.selectedShowdownWinnerIds = [];
+  state.showdownSplitMode = false;
+  logEvent(message);
+  resolveAutomaticShowdownPots();
+  if (!state.showdownPots.length) {
+    finalizeShowdownResults();
+  }
+}
+
+function awardShowdownPot(winnerIds) {
+  const [currentPot, ...remainingPots] = state.showdownPots;
+  if (!currentPot || !winnerIds.length) {
+    return;
+  }
+
+  const validWinnerIds = winnerIds.filter((winnerId) => currentPot.eligibleIds.includes(winnerId));
+  if (!validWinnerIds.length) {
+    return;
+  }
+
+  const splitAmount = Math.floor(currentPot.amount / validWinnerIds.length);
+  let remainder = currentPot.amount % validWinnerIds.length;
+
+  validWinnerIds.forEach((winnerId) => {
+    const winner = state.players.find((player) => player.id === winnerId);
+    if (!winner) {
+      return;
+    }
+
+    const awardAmount = splitAmount + (remainder > 0 ? 1 : 0);
+    remainder = Math.max(0, remainder - 1);
+    state.showdownResults.push({
+      potLabel: currentPot.label,
+      winnerId,
+      winnerName: winner.name,
+      amount: awardAmount,
+    });
+  });
+
+  state.showdownPots = remainingPots;
+  state.selectedShowdownWinnerIds = [];
+  state.showdownSplitMode = false;
+  const winnerNames = validWinnerIds
+    .map((winnerId) => state.players.find((player) => player.id === winnerId)?.name)
+    .filter(Boolean);
+  logEvent(
+    `${winnerNames.join(" / ")} won ${currentPot.label.toLowerCase()} ${currentPot.amount}${
+      winnerNames.length > 1 ? " split" : ""
+    }.`,
+  );
+  resolveAutomaticShowdownPots();
+
+  if (!state.showdownPots.length) {
+    finalizeShowdownResults();
+    return;
+  }
+
+  saveAndRender();
+}
+
+function finalizeShowdownResults() {
+  const winnerIds = new Set();
+
+  state.showdownResults.forEach((result) => {
+    const winner = state.players.find((player) => player.id === result.winnerId);
+    if (!winner) {
+      return;
+    }
+
+    winner.stack += result.amount;
+    winnerIds.add(winner.id);
+  });
+
+  winnerIds.forEach((winnerId) => {
+    const winner = state.players.find((player) => player.id === winnerId);
+    if (winner) {
+      winner.stats.handsWon += 1;
+    }
+  });
+
+  state.players.forEach((player) => {
+    player.committed = 0;
+    player.streetBet = 0;
+    player.acted = false;
+    player.canRaise = player.status === PLAYER_STATUSES.ACTIVE;
+  });
+  state.board = [null, null, null, null, null];
+  state.currentBet = 0;
+  state.currentPlayerIndex = null;
+  state.handActive = false;
+  state.handPhase = HAND_PHASES.WINNER;
+  state.handMessage =
+    state.showdownResults.length === 1 ? getWinnerMessage(state.showdownResults[0].winnerName) : "Pots awarded.";
+  state.selectedShowdownWinnerIds = [];
+  state.showdownSplitMode = false;
+  saveAndRender();
+}
+
+function playersWithChips() {
+  return state.players.filter((player) => player.stack > 0);
+}
+
+function resolveAutomaticShowdownPots() {
+  while (state.showdownPots.length) {
+    const currentPot = state.showdownPots[0];
+    if (currentPot.eligibleIds.length !== 1) {
+      break;
+    }
+
+    const winnerId = currentPot.eligibleIds[0];
+    const winner = state.players.find((player) => player.id === winnerId);
+    if (!winner) {
+      break;
+    }
+
+    state.showdownResults.push({
+      potLabel: currentPot.label,
+      winnerId,
+      winnerName: winner.name,
+      amount: currentPot.amount,
+    });
+    state.showdownPots = state.showdownPots.slice(1);
+    logEvent(`${winner.name} won ${currentPot.label.toLowerCase()} ${currentPot.amount} automatically.`);
+  }
+}
+
+function toggleShowdownWinnerSelection(winnerId) {
+  if (state.selectedShowdownWinnerIds.includes(winnerId)) {
+    state.selectedShowdownWinnerIds = state.selectedShowdownWinnerIds.filter((id) => id !== winnerId);
+  } else {
+    state.selectedShowdownWinnerIds = [...state.selectedShowdownWinnerIds, winnerId];
+  }
+  saveAndRender();
+}
+
+function confirmShowdownPotAward() {
+  if (!state.selectedShowdownWinnerIds.length) {
+    return;
+  }
+
+  awardShowdownPot(state.selectedShowdownWinnerIds);
+}
+
+function startShowdownSplit() {
+  const currentPot = state.showdownPots[0];
+  if (!currentPot) {
+    return;
+  }
+
+  if (currentPot.eligibleIds.length === 2) {
+    awardShowdownPot([...currentPot.eligibleIds]);
+    return;
+  }
+
+  state.showdownSplitMode = true;
+  state.selectedShowdownWinnerIds = [];
+  saveAndRender();
+}
+
+function cancelShowdownSplit() {
+  state.showdownSplitMode = false;
+  state.selectedShowdownWinnerIds = [];
+  saveAndRender();
 }
 
 function render() {
@@ -601,17 +878,32 @@ function renderSettings() {
   elements.confirmSettings.classList.toggle("hidden", !state.gameStarted);
   elements.startGame.disabled = state.players.length < 2;
   elements.addGooners.classList.toggle("hidden", state.gameStarted);
+  elements.addWg.classList.toggle("hidden", state.gameStarted);
   elements.startingStackSetting.classList.toggle("hidden", state.gameStarted);
 }
 
 function renderVisibility() {
   elements.appShell.classList.toggle("game-live", state.gameStarted);
+  elements.appShell.classList.remove("phase-flop", "phase-turn", "phase-river", "phase-showdown");
+  if (state.gameStarted) {
+    if (state.handPhase === HAND_PHASES.SHOWDOWN) {
+      elements.appShell.classList.add("phase-showdown");
+    } else if (state.streetIndex === 1) {
+      elements.appShell.classList.add("phase-flop");
+    } else if (state.streetIndex === 2) {
+      elements.appShell.classList.add("phase-turn");
+    } else if (state.streetIndex >= 3) {
+      elements.appShell.classList.add("phase-river");
+    }
+  }
   elements.gamePanels.forEach((panel) => {
     panel.classList.toggle("hidden", !state.gameStarted);
   });
   elements.hero.classList.toggle("hidden", state.gameStarted);
   elements.resetGame.classList.add("hidden");
-  document.querySelector(".action-panel")?.classList.toggle("showdown-mode", state.handPhase === HAND_PHASES.SHOWDOWN);
+  const actionPanel = document.querySelector(".action-panel");
+  actionPanel?.classList.toggle("showdown-mode", state.handPhase === HAND_PHASES.SHOWDOWN);
+  actionPanel?.classList.toggle("winner-mode", state.handPhase === HAND_PHASES.WINNER);
   elements.roundIndicator.classList.toggle("hidden", !state.gameStarted);
 }
 
@@ -655,6 +947,8 @@ function renderSummary() {
     : state.handPhase === HAND_PHASES.WINNER
       ? state.handMessage.replace(/\.$/, "")
       : "Round complete";
+  elements.awardPot.disabled =
+    totalPot() === 0 || [HAND_PHASES.SHOWDOWN, HAND_PHASES.WINNER, HAND_PHASES.COMPLETE].includes(state.handPhase);
 }
 
 function renderBoard() {
@@ -690,16 +984,19 @@ function renderTurnCard() {
   }
 
   if (state.handPhase === HAND_PHASES.SHOWDOWN) {
+    const remainingPot = state.showdownPots.length
+      ? state.showdownPots.reduce((sum, pot) => sum + pot.amount, 0)
+      : totalPot();
     elements.turnCard.className = "turn-status-wrap";
     elements.turnCard.innerHTML = `
-      <div class="turn-status-grid">
-        <div class="turn-status-tile turn-status-main">
+      <div class="turn-status-grid showdown-status-grid">
+        <div class="turn-status-tile turn-status-main showdown-status-main">
           <p class="eyebrow">Showdown</p>
-          <p>Reveal hands and award the pot.</p>
+          <p class="showdown-status-copy">Reveal hands</p>
         </div>
         <div class="turn-status-tile turn-status-pot">
-          <p class="eyebrow">Pot</p>
-          <h3>${formatChips(totalPot())}</h3>
+          <p class="eyebrow">Remaining Pot</p>
+          <h3>${formatChips(remainingPot)}</h3>
         </div>
       </div>
     `;
@@ -707,20 +1004,81 @@ function renderTurnCard() {
   }
 
   if (state.handPhase === HAND_PHASES.WINNER) {
+    const chipLeaders = playersWithChips();
+    if (chipLeaders.length === 1) {
+      const champion = chipLeaders[0];
+      elements.turnCard.className = "turn-status-wrap";
+      elements.turnCard.innerHTML = `
+        <div class="turn-status-grid winner-results-grid">
+          <div class="turn-status-tile turn-status-main winner-result-card">
+            <p class="eyebrow">Champion</p>
+            <h3>Congrats, ${champion.name}</h3>
+            <p>You have all the chips.</p>
+          </div>
+          <div class="turn-status-tile winner-stacks-card">
+            <p class="eyebrow">Final Stack</p>
+            <div class="winner-stack-list">
+              <div class="winner-stack-row">
+                <span>${champion.name}</span>
+                <strong class="winner-stack-value">${formatChips(champion.stack)}</strong>
+              </div>
+            </div>
+            <button id="winner-new-game" type="button">Start New Game</button>
+          </div>
+        </div>
+      `;
+      elements.turnCard.querySelector("#winner-new-game")?.addEventListener("click", resetGame);
+      return;
+    }
+
+    const resultTitle = state.showdownResults.length > 1 ? "Results" : "Winner";
+    const resultMarkup = state.showdownResults.length
+      ? `
+          <div class="winner-result-list">
+            ${state.showdownResults
+              .map(
+                (result) => `
+                  <p>${result.potLabel}: ${result.winnerName} (${formatChips(result.amount)})</p>
+                `,
+              )
+              .join("")}
+          </div>
+        `
+      : `<h3>${state.handMessage.replace(/\.$/, "")}</h3>`;
+    const stackRows = state.players
+      .map(
+        (player) => {
+          const delta = player.stack - (state.handStartStacks[player.id] ?? player.stack);
+          const direction = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+          const indicator = delta > 0 ? "↑" : delta < 0 ? "↓" : "•";
+          return `
+          <div class="winner-stack-row">
+            <span>${player.name}</span>
+            <strong class="winner-stack-value">
+              ${formatChips(player.stack)}
+              <span class="winner-stack-trend winner-stack-trend-${direction}">${indicator}</span>
+            </strong>
+          </div>
+        `;
+        },
+      )
+      .join("");
+
     elements.turnCard.className = "turn-status-wrap";
     elements.turnCard.innerHTML = `
-      <div class="turn-status-grid">
-        <div class="turn-status-tile turn-status-main">
-          <p class="eyebrow">Hand Winner</p>
-          <h3>${state.handMessage.replace(/\.$/, "")}</h3>
-          <p>Continue when ready</p>
+      <div class="turn-status-grid winner-results-grid">
+        <div class="turn-status-tile turn-status-main winner-result-card">
+          <p class="eyebrow">${resultTitle}</p>
+          ${resultMarkup}
         </div>
-        <div class="turn-status-tile turn-status-pot">
-          <p class="eyebrow">Pot</p>
-          <h3>${formatChips(totalPot())}</h3>
+        <div class="turn-status-tile winner-stacks-card">
+          <p class="eyebrow">Updated Stacks</p>
+          <div class="winner-stack-list">${stackRows}</div>
+          <button id="winner-continue" type="button">Continue</button>
         </div>
       </div>
     `;
+    elements.turnCard.querySelector("#winner-continue")?.addEventListener("click", continueToNextRound);
     return;
   }
 
@@ -811,31 +1169,51 @@ function getNextStreetPrompt() {
 function renderBetControls() {
   const currentPlayer = state.currentPlayerIndex !== null ? state.players[state.currentPlayerIndex] : null;
   const toCall = currentPlayer ? Math.max(0, state.currentBet - currentPlayer.streetBet) : 0;
-  const minRaise = Math.max(state.settings.bigBlind, 1);
-  const maxRaise = currentPlayer ? Math.max(minRaise, currentPlayer.stack) : minRaise;
-  const allowedAmounts = getAllowedBetAmounts(minRaise, maxRaise);
-  const rawIndex = parsePositiveInt(elements.betAmount.value, 0);
-  const currentAmount = allowedAmounts[Math.min(rawIndex, allowedAmounts.length - 1)] ?? minRaise;
+  const callAmount = currentPlayer ? Math.min(toCall, currentPlayer.stack) : 0;
+  const minRaiseCommitment = getMinimumRaiseCommitment(currentPlayer, toCall);
+  const allowedAmounts = getAllowedBetAmounts(currentPlayer, toCall);
+
+  syncBetControlState(currentPlayer, toCall, callAmount, minRaiseCommitment, allowedAmounts);
+
+  const currentAmount = state.betControlAmount;
   const sliderIndex = findClosestBetIndex(allowedAmounts, currentAmount);
-  const nextValue = allowedAmounts[sliderIndex] ?? minRaise;
+  const nextValue = allowedAmounts[sliderIndex] ?? callAmount;
+  const canRaiseAvailable = currentPlayer ? currentPlayer.canRaise !== false && currentPlayer.stack > callAmount : false;
+  const hasRaiseAmountSelected = nextValue > callAmount;
+  const actionTotal = currentPlayer ? currentPlayer.streetBet + nextValue : 0;
+  const isRaiseSelected = state.selectedAction === "raise" && hasRaiseAmountSelected;
+  const isCallAllIn = currentPlayer && toCall > 0 && callAmount === currentPlayer.stack;
+  const isBetAllIn = currentPlayer && nextValue > callAmount && nextValue === currentPlayer.stack;
+  const callLabel = toCall === 0 ? "Check" : isCallAllIn ? "All-in" : `Call ${callAmount}`;
+  let betLabel = toCall === 0 ? "Bet" : "Raise";
+  if (currentPlayer && nextValue > callAmount) {
+    betLabel = isBetAllIn ? "All-in" : toCall === 0 ? `Bet ${nextValue}` : `Raise to ${actionTotal}`;
+  }
 
   elements.betAmount.min = "0";
   elements.betAmount.max = String(Math.max(allowedAmounts.length - 1, 0));
   elements.betAmount.step = "1";
   elements.betAmount.value = String(sliderIndex);
-  elements.betAmount.disabled = !currentPlayer || currentPlayer.stack === 0;
+  elements.betAmount.disabled = !currentPlayer || allowedAmounts.length <= 1;
   elements.betAmount.dataset.allowedAmounts = JSON.stringify(allowedAmounts);
+  elements.betAmount.dataset.callAmount = String(callAmount);
+  elements.betAmount.dataset.minRaiseCommitment = String(minRaiseCommitment);
   elements.betAmountDisplay.dataset.amount = String(nextValue);
+  elements.betControls?.classList.toggle("bet-controls-disabled", !currentPlayer);
   elements.betAmountDisplay.textContent = currentPlayer
-    ? `${nextValue}${nextValue === currentPlayer.stack ? " · All-in" : ""}`
+    ? nextValue === callAmount
+      ? callLabel
+      : `${nextValue}${isBetAllIn ? " · All-in" : ""}`
     : "0";
-  elements.actionCall.textContent = toCall === 0 ? "Check" : `Call ${toCall}`;
-  elements.actionCall.classList.toggle("ghost-button", toCall === 0);
-  elements.actionBet.textContent =
-    currentPlayer && nextValue === currentPlayer.stack ? "All-in" : toCall === 0 ? "Bet" : "Raise";
+  elements.betAmountDisplay.classList.toggle("raise-ready", isRaiseSelected);
+  elements.actionCall.textContent = callLabel;
+  elements.actionCall.classList.toggle("ghost-button", !state.selectedAction || state.selectedAction !== "call");
+  elements.actionCall.classList.toggle("action-selected-call", state.selectedAction === "call");
+  elements.actionBet.textContent = betLabel;
+  elements.actionBet.classList.toggle("action-selected-bet", isRaiseSelected);
   elements.actionFold.disabled = !currentPlayer;
   elements.actionCall.disabled = !currentPlayer;
-  elements.actionBet.disabled = !currentPlayer;
+  elements.actionBet.disabled = !currentPlayer || !canRaiseAvailable;
 }
 
 function renderStreetAction() {
@@ -875,40 +1253,65 @@ function renderStreetAction() {
 
 function renderShowdownActions() {
   elements.showdownActions.innerHTML = "";
-  elements.showdownActions.classList.toggle(
-    "hidden",
-    ![HAND_PHASES.SHOWDOWN, HAND_PHASES.WINNER].includes(state.handPhase),
-  );
+  elements.showdownActions.classList.toggle("hidden", state.handPhase !== HAND_PHASES.SHOWDOWN);
 
-  if (![HAND_PHASES.SHOWDOWN, HAND_PHASES.WINNER].includes(state.handPhase)) {
+  if (state.handPhase !== HAND_PHASES.SHOWDOWN) {
     return;
   }
 
-  if (state.handPhase === HAND_PHASES.WINNER) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = state.handNumber >= state.settings.totalRounds ? "Finish match" : "Continue to next round";
-    button.addEventListener("click", continueToNextRound);
-    elements.showdownActions.appendChild(button);
+  const currentPot = state.showdownPots[0] ?? calculateSidePots()[0];
+  if (!currentPot) {
     return;
   }
 
   const label = document.createElement("p");
   label.className = "showdown-label";
-  label.textContent = "Who's the winner?";
+  label.textContent = state.showdownSplitMode
+    ? `${currentPot.label} · ${formatChips(currentPot.amount)} · Select tied winners`
+    : `${currentPot.label} · ${formatChips(currentPot.amount)} · Who won?`;
   elements.showdownActions.appendChild(label);
 
   state.players
-    .filter((player) => player.status !== PLAYER_STATUSES.FOLDED && player.status !== PLAYER_STATUSES.OUT)
+    .filter((player) => currentPot.eligibleIds.includes(player.id))
     .forEach((player) => {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = player.name;
+      button.classList.toggle("showdown-selected", state.selectedShowdownWinnerIds.includes(player.id));
       button.addEventListener("click", () => {
-        completeHandWithWinner(player.id);
+        if (state.showdownSplitMode) {
+          toggleShowdownWinnerSelection(player.id);
+          return;
+        }
+
+        awardShowdownPot([player.id]);
       });
       elements.showdownActions.appendChild(button);
     });
+
+  if (state.showdownSplitMode) {
+    const confirmButton = document.createElement("button");
+    confirmButton.type = "button";
+    confirmButton.textContent = "Confirm Split Pot";
+    confirmButton.disabled = state.selectedShowdownWinnerIds.length < 2;
+    confirmButton.addEventListener("click", confirmShowdownPotAward);
+    elements.showdownActions.appendChild(confirmButton);
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "ghost-button";
+    cancelButton.textContent = "Cancel Split";
+    cancelButton.addEventListener("click", cancelShowdownSplit);
+    elements.showdownActions.appendChild(cancelButton);
+    return;
+  }
+
+  const splitButton = document.createElement("button");
+  splitButton.type = "button";
+  splitButton.className = "ghost-button";
+  splitButton.textContent = currentPot.eligibleIds.length === 2 ? "Split Pot" : "Select Split Pot";
+  splitButton.addEventListener("click", startShowdownSplit);
+  elements.showdownActions.appendChild(splitButton);
 }
 
 function renderInHandOverview() {
@@ -923,35 +1326,60 @@ function renderInHandOverview() {
   playersInHand.forEach((player) => {
     const badge = document.createElement("span");
     badge.className = "badge";
-    const labels = [player.name];
-    if (state.players[state.dealerIndex]?.id === player.id) labels.push("D");
-    if (state.players[getSmallBlindIndex()]?.id === player.id) labels.push("SB");
-    if (state.players[getBigBlindIndex()]?.id === player.id) labels.push("BB");
+    if (player.status === PLAYER_STATUSES.ALL_IN) {
+      badge.classList.add("in-hand-all-in");
+    }
+    const roleLabels = [];
+    if (state.players[state.dealerIndex]?.id === player.id) roleLabels.push("Dealer");
+    if (state.players[getSmallBlindIndex()]?.id === player.id) roleLabels.push("SB");
+    if (state.players[getBigBlindIndex()]?.id === player.id) roleLabels.push("BB");
     if (state.currentPlayerIndex !== null && state.players[state.currentPlayerIndex]?.id === player.id) {
       badge.classList.add("in-hand-acting");
     }
+    const amountLabel = player.status === PLAYER_STATUSES.ALL_IN ? "All-in" : `${player.streetBet} this round`;
+    const roleMarkup = roleLabels.length ? `<span class="in-hand-role">${roleLabels.join(" · ")}</span>` : "";
     badge.innerHTML = `
-      <span class="in-hand-primary">${labels.join(" · ")}</span>
-      <span class="in-hand-secondary">${player.streetBet} this round</span>
+      <span class="in-hand-primary">${player.name}</span>
+      <span class="in-hand-secondary">${amountLabel}</span>
+      ${roleMarkup}
     `;
     elements.inHandList.appendChild(badge);
   });
 }
 
-function getAllowedBetAmounts(minRaise, maxRaise) {
-  const amounts = [];
-  let amount = minRaise;
+function getAllowedBetAmounts(currentPlayer, toCall) {
+  if (!currentPlayer) {
+    return [0];
+  }
 
-  while (amount <= maxRaise) {
+  const callAmount = Math.min(toCall, currentPlayer.stack);
+  const amounts = [callAmount];
+  const minRaiseCommitment = getMinimumRaiseCommitment(currentPlayer, toCall);
+  let amount = minRaiseCommitment;
+
+  while (amount <= currentPlayer.stack) {
     amounts.push(amount);
     amount += 5;
   }
 
-  if (!amounts.includes(maxRaise)) {
-    amounts.push(maxRaise);
+  if (!amounts.includes(currentPlayer.stack)) {
+    amounts.push(currentPlayer.stack);
   }
 
   return [...new Set(amounts)].sort((a, b) => a - b);
+}
+
+function getMinimumRaiseCommitment(currentPlayer, toCall) {
+  if (!currentPlayer) {
+    return 0;
+  }
+
+  const callAmount = Math.min(toCall, currentPlayer.stack);
+  if (currentPlayer.stack <= callAmount) {
+    return callAmount;
+  }
+
+  return Math.min(currentPlayer.stack, callAmount + Math.max(state.lastFullRaise, state.settings.bigBlind, 1));
 }
 
 function findClosestBetIndex(amounts, target) {
@@ -970,9 +1398,52 @@ function findClosestBetIndex(amounts, target) {
 }
 
 function getSelectedBetAmount() {
+  return Math.max(0, state.betControlAmount ?? 0);
+}
+
+function syncBetControlState(currentPlayer, toCall, callAmount, minRaiseCommitment, allowedAmounts) {
+  const playerId = currentPlayer?.id ?? null;
+  const contextChanged =
+    state.betControlPlayerId !== playerId ||
+    state.betControlToCall !== toCall ||
+    !allowedAmounts.includes(state.betControlAmount);
+
+  if (contextChanged) {
+    state.betControlPlayerId = playerId;
+    state.betControlToCall = toCall;
+    state.betControlAmount = callAmount;
+    state.selectedAction = "call";
+    state.typedBetInput = "";
+    state.typedBetInputAt = 0;
+    state.typedBetInputPlayerId = playerId;
+    return;
+  }
+
+  if (state.selectedAction === "raise" && state.betControlAmount <= callAmount && minRaiseCommitment > callAmount) {
+    state.betControlAmount = minRaiseCommitment;
+  }
+}
+
+function setSelectedBetAmount(amount) {
+  const allowedAmounts = JSON.parse(elements.betAmount.dataset.allowedAmounts ?? "[]");
+  if (!allowedAmounts.length) {
+    state.betControlAmount = 0;
+    return;
+  }
+
+  const nextIndex = findClosestBetIndex(allowedAmounts, amount);
+  state.betControlAmount = allowedAmounts[nextIndex] ?? allowedAmounts[0];
+}
+
+function onBetSliderInput() {
   const allowedAmounts = JSON.parse(elements.betAmount.dataset.allowedAmounts ?? "[]");
   const index = parsePositiveInt(elements.betAmount.value, 0);
-  return allowedAmounts[index] ?? state.settings.bigBlind;
+  const nextAmount = allowedAmounts[index] ?? 0;
+  const callAmount = parsePositiveInt(elements.betAmount.dataset.callAmount, 0);
+
+  state.betControlAmount = nextAmount;
+  state.selectedAction = nextAmount > callAmount ? "raise" : "call";
+  renderBetControls();
 }
 
 function adjustBetAmount(increment) {
@@ -982,9 +1453,138 @@ function adjustBetAmount(increment) {
   }
 
   const currentAmount = getSelectedBetAmount();
-  const targetAmount = currentAmount + increment;
-  const nextIndex = findClosestBetIndex(allowedAmounts, Math.min(targetAmount, allowedAmounts[allowedAmounts.length - 1]));
-  elements.betAmount.value = String(nextIndex);
+  const callAmount = parsePositiveInt(elements.betAmount.dataset.callAmount, 0);
+  const minRaiseCommitment = parsePositiveInt(elements.betAmount.dataset.minRaiseCommitment, callAmount);
+  let targetAmount = currentAmount + increment;
+
+  if (increment > 0 && currentAmount <= callAmount) {
+    targetAmount = Math.max(callAmount + increment, minRaiseCommitment);
+  }
+
+  const maxAmount = allowedAmounts[allowedAmounts.length - 1];
+  setSelectedBetAmount(Math.max(callAmount, Math.min(targetAmount, maxAmount)));
+  state.selectedAction = state.betControlAmount > callAmount ? "raise" : "call";
+  renderBetControls();
+}
+
+function onActionButtonClick(action) {
+  if (!state.handActive || state.currentPlayerIndex === null) {
+    return;
+  }
+
+  const currentPlayer = state.players[state.currentPlayerIndex];
+  if (!currentPlayer) {
+    return;
+  }
+
+  const toCall = Math.max(0, state.currentBet - currentPlayer.streetBet);
+  const callAmount = Math.min(toCall, currentPlayer.stack);
+  const minRaiseCommitment = getMinimumRaiseCommitment(currentPlayer, toCall);
+
+  if (action === "raise" && currentPlayer.stack <= callAmount) {
+    return;
+  }
+
+  if (state.selectedAction !== action) {
+    state.selectedAction = action;
+    state.betControlAmount = action === "raise" ? minRaiseCommitment : callAmount;
+    renderBetControls();
+    return;
+  }
+
+  applyAction(action);
+}
+
+function onGlobalKeydown(event) {
+  if (event.repeat || isTypingTarget(event.target)) {
+    return;
+  }
+
+  if (/^\d$/.test(event.key) && state.currentPlayerIndex !== null && state.handActive && !elements.betAmount.disabled) {
+    event.preventDefault();
+    onBetDigitInput(event.key);
+    return;
+  }
+
+  if (event.code === "Space") {
+    event.preventDefault();
+
+    if (state.handPhase === HAND_PHASES.WINNER) {
+      elements.turnCard.querySelector("#winner-continue")?.click();
+      return;
+    }
+
+    if (state.currentPlayerIndex !== null && state.handActive) {
+      const action = state.selectedAction === "raise" ? "raise" : "call";
+      onActionButtonClick(action);
+      return;
+    }
+
+    if (!elements.streetAction.disabled) {
+      elements.streetAction.click();
+    }
+    return;
+  }
+
+  if (event.key.toLowerCase() === "f" && state.currentPlayerIndex !== null && state.handActive) {
+    event.preventDefault();
+    applyAction("fold");
+    return;
+  }
+
+  if (event.key === "ArrowRight" && state.currentPlayerIndex !== null && !elements.betAmount.disabled) {
+    event.preventDefault();
+    adjustBetAmount(5);
+    return;
+  }
+
+  if (event.key === "ArrowLeft" && state.currentPlayerIndex !== null && !elements.betAmount.disabled) {
+    event.preventDefault();
+    adjustBetAmount(-5);
+  }
+}
+
+function isTypingTarget(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT" ||
+    target.isContentEditable
+  );
+}
+
+function onBetDigitInput(digit) {
+  const currentPlayer = state.currentPlayerIndex !== null ? state.players[state.currentPlayerIndex] : null;
+  if (!currentPlayer) {
+    return;
+  }
+
+  const now = Date.now();
+  const shouldResetBuffer =
+    state.typedBetInputPlayerId !== currentPlayer.id || now - (state.typedBetInputAt ?? 0) > 1500;
+  const nextBuffer = `${shouldResetBuffer ? "" : state.typedBetInput}${digit}`;
+  const parsedTarget = Number.parseInt(nextBuffer, 10);
+
+  if (!Number.isFinite(parsedTarget)) {
+    return;
+  }
+
+  const allowedAmounts = JSON.parse(elements.betAmount.dataset.allowedAmounts ?? "[]");
+  if (!allowedAmounts.length) {
+    return;
+  }
+
+  const callAmount = parsePositiveInt(elements.betAmount.dataset.callAmount, 0);
+  const nextIndex = findClosestBetIndex(allowedAmounts, parsedTarget);
+  state.betControlAmount = allowedAmounts[nextIndex] ?? allowedAmounts[0];
+  state.selectedAction = state.betControlAmount > callAmount ? "raise" : "call";
+  state.typedBetInput = nextBuffer;
+  state.typedBetInputAt = now;
+  state.typedBetInputPlayerId = currentPlayer.id;
   renderBetControls();
 }
 
@@ -1131,9 +1731,9 @@ function renderSetupPlayers() {
     expandButton.addEventListener("click", () => toggleExpandedPlayerStats(player.id));
     const addChipsButton = pill.querySelector(".setup-player-add-chips");
     if (addChipsButton) {
-      const amountSelect = pill.querySelector(".setup-player-rebuy-amount");
+      const amountInput = pill.querySelector(".setup-player-rebuy-amount");
       addChipsButton.addEventListener("click", () =>
-        queuePlayerRebuy(player.id, parsePositiveInt(amountSelect?.value, state.settings.startingStack)),
+        queuePlayerRebuy(player.id, parsePositiveInt(amountInput?.value, state.settings.startingStack)),
       );
     }
     pill.querySelector(".setup-player-delete").addEventListener("click", () => {
@@ -1157,6 +1757,7 @@ function updatePlayerStartingStack(playerId, value) {
 
   player.stack = parsePositiveInt(value, 0);
   player.status = player.stack > 0 ? PLAYER_STATUSES.ACTIVE : PLAYER_STATUSES.OUT;
+  player.canRaise = player.stack > 0;
   saveAndRender();
 }
 
@@ -1173,35 +1774,30 @@ function movePlayerByOffset(playerId, offset) {
 }
 
 function renderSetupPlayerStats(player) {
-  const handsPlayed = player.stats.handsPlayed || 0;
-  const handsWon = player.stats.handsWon || 0;
-  const winRate = handsPlayed ? `${Math.round((handsWon / handsPlayed) * 100)}%` : "0%";
   const pendingRebuy = state.pendingRebuys[player.id] || 0;
-  const stats = [
-    ["Stack", formatChips(player.stack)],
-    ["Win Rate", winRate],
-  ];
 
   return `
-    <div class="setup-player-stats">
-      ${stats
-        .map(
-          ([label, value]) => `
-            <div class="setup-player-stat">
-              <p class="setup-player-stat-label">${label}</p>
-              <p class="setup-player-stat-value">${value}</p>
-            </div>`,
-        )
-        .join("")}
+    <div class="setup-player-stats setup-player-stats-compact">
+      <div class="setup-player-stat">
+        <p class="setup-player-stat-label">Stack</p>
+        <p class="setup-player-stat-value">${formatChips(player.stack)}</p>
+      </div>
+      <div class="setup-player-stat">
+        <p class="setup-player-stat-label">Chip Queue</p>
+        <p class="setup-player-stat-value">${pendingRebuy > 0 ? `+${pendingRebuy}` : "0"}</p>
+      </div>
     </div>
-    <div class="setup-player-rebuy">
-      <p>${pendingRebuy > 0 ? `Queued next hand: +${pendingRebuy}` : "No chips queued for next hand."}</p>
+    <div class="setup-player-rebuy setup-player-rebuy-compact">
       <div class="setup-player-rebuy-controls">
-        <select class="setup-player-rebuy-amount">
-          ${getRebuyOptions()
-            .map((amount) => `<option value="${amount}">${amount}</option>`)
-            .join("")}
-        </select>
+        <input
+          class="setup-player-rebuy-amount"
+          type="number"
+          inputmode="numeric"
+          min="1"
+          step="1"
+          placeholder="${state.settings.startingStack}"
+          value="${state.settings.startingStack}"
+        />
         <button class="setup-player-control setup-player-add-chips" type="button">Queue</button>
       </div>
     </div>
@@ -1238,10 +1834,6 @@ function queuePlayerRebuy(playerId, amount) {
   saveAndRender();
 }
 
-function getRebuyOptions() {
-  return [50, 100, 150, 200, 250, 300, 500];
-}
-
 function createPlayerStats() {
   return {
     handsPlayed: 0,
@@ -1263,6 +1855,7 @@ function createPlayer(name, stack = initialState.settings.startingStack) {
     status: stack > 0 ? PLAYER_STATUSES.ACTIVE : PLAYER_STATUSES.OUT,
     cards: [null, null],
     acted: false,
+    canRaise: stack > 0,
     stats: createPlayerStats(),
   };
 }
