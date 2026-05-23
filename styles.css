@@ -511,6 +511,50 @@ input[type="range"]::-moz-range-thumb {
   margin-top: 28px;
 }
 
+.setup-keybinds {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(131, 142, 150, 0.12);
+}
+
+.setup-keybinds-title {
+  margin: 0 0 10px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.setup-keybinds-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.setup-keybinds-grid span {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.setup-keybinds kbd {
+  display: inline-block;
+  min-width: 2.2em;
+  padding: 4px 7px;
+  margin-right: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(131, 142, 150, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.app-shell.game-live .setup-keybinds {
+  display: none;
+}
+
 .setup-players-list {
   margin-top: 14px;
   display: grid;
