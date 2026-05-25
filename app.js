@@ -1264,10 +1264,10 @@ function renderBetControls() {
   const isRaiseSelected = state.selectedAction === "raise" && hasRaiseAmountSelected;
   const isCallAllIn = currentPlayer && toCall > 0 && callAmount === currentPlayer.stack;
   const isBetAllIn = currentPlayer && nextValue > callAmount && nextValue === currentPlayer.stack;
-  const callLabel = toCall === 0 ? "Check" : isCallAllIn ? "All-in" : `Call ${callAmount}`;
+  const callLabel = toCall === 0 ? "Check" : isCallAllIn ? `All-in ${callAmount}` : `Call ${callAmount}`;
   let betLabel = toCall === 0 ? "Bet" : "Raise";
   if (currentPlayer && nextValue > callAmount) {
-    betLabel = isBetAllIn ? "All-in" : toCall === 0 ? `Bet ${nextValue}` : `Raise to ${actionTotal}`;
+    betLabel = isBetAllIn ? `All-in ${nextValue}` : toCall === 0 ? `Bet ${nextValue}` : `Raise to ${actionTotal}`;
   }
 
   elements.betAmount.min = "0";
