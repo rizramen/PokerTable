@@ -185,24 +185,27 @@ select {
 input[type="range"] {
   appearance: none;
   -webkit-appearance: none;
+  width: 100%;
   padding: 0;
-  height: 24px;
+  height: 40px;
   background: transparent;
   border: 0;
   box-shadow: none;
+  touch-action: pan-x;
 }
 
 input[type="range"]::-webkit-slider-runnable-track {
-  height: 2px;
+  height: 6px;
   background: rgba(127, 169, 155, 0.35);
+  border-radius: 999px;
 }
 
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
-  margin-top: -7px;
+  width: 28px;
+  height: 28px;
+  margin-top: -11px;
   border-radius: 50%;
   background: var(--accent-green);
   border: 1px solid rgba(209, 215, 220, 0.4);
@@ -210,14 +213,15 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 input[type="range"]::-moz-range-track {
-  height: 2px;
+  height: 6px;
   background: rgba(127, 169, 155, 0.35);
   border: 0;
+  border-radius: 999px;
 }
 
 input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--accent-green);
   border: 1px solid rgba(209, 215, 220, 0.4);
@@ -859,6 +863,7 @@ input[type="range"]::-moz-range-thumb {
 
 .turn-status-tile h3 {
   margin: 0;
+  font-size: 1.6rem;
 }
 
 .turn-status-tile p:last-child {
@@ -932,14 +937,6 @@ input[type="range"]::-moz-range-thumb {
     0 0 18px rgba(108, 140, 161, 0.08);
 }
 
-.live-stage-actions {
-  margin-top: 12px;
-}
-
-.live-stage-actions button {
-  width: 100%;
-}
-
 .showdown-actions {
   margin-top: 12px;
   display: grid;
@@ -966,16 +963,21 @@ input[type="range"]::-moz-range-thumb {
 
 .app-shell.game-live .action-panel.showdown-mode .action-buttons,
 .app-shell.game-live .action-panel.showdown-mode .bet-controls,
-.app-shell.game-live .action-panel.showdown-mode .in-hand-card,
-.app-shell.game-live .action-panel.showdown-mode .live-stage-actions {
+.app-shell.game-live .action-panel.showdown-mode .in-hand-card {
   display: none;
 }
 
 .app-shell.game-live .action-panel.winner-mode .action-buttons,
 .app-shell.game-live .action-panel.winner-mode .bet-controls,
 .app-shell.game-live .action-panel.winner-mode .in-hand-card,
-.app-shell.game-live .action-panel.winner-mode .live-stage-actions,
 .app-shell.game-live .action-panel.winner-mode .showdown-actions {
+  display: none;
+}
+
+.app-shell.game-live .action-panel.complete-mode .action-buttons,
+.app-shell.game-live .action-panel.complete-mode .bet-controls,
+.app-shell.game-live .action-panel.complete-mode .in-hand-card,
+.app-shell.game-live .action-panel.complete-mode .showdown-actions {
   display: none;
 }
 
@@ -988,6 +990,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .winner-result-card h3 {
+  margin: 0 0 10px;
   color: var(--accent-yellow-strong);
 }
 
@@ -1008,6 +1011,21 @@ input[type="range"]::-moz-range-thumb {
 .winner-stacks-card button {
   width: 100%;
   margin-top: 14px;
+}
+
+.complete-status-title {
+  font-size: 1.3rem;
+}
+
+.complete-actions-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+
+.complete-actions-card button {
+  margin-top: 0;
 }
 
 .winner-stack-list {
@@ -1062,46 +1080,27 @@ input[type="range"]::-moz-range-thumb {
   margin-top: 14px;
 }
 
+.bet-controls.turn-card {
+  padding: 12px 14px;
+}
+
 .bet-controls.bet-controls-disabled {
   opacity: 0.42;
 }
 
-.bet-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.bet-label-row span:first-child {
-  color: var(--text-primary);
-}
-
 .bet-slider-wrap {
-  margin-top: 10px;
+  padding: 2px 0;
 }
 
 .bet-shortcuts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
 }
 
-.slider-value {
-  margin: 0;
-  color: var(--accent-green);
-  font-weight: 700;
-  text-shadow:
-    0 0 10px rgba(127, 169, 155, 0.38),
-    0 0 20px rgba(127, 169, 155, 0.16);
-}
-
-.slider-value.raise-ready {
-  color: var(--accent-yellow-strong);
-  text-shadow:
-    0 0 10px rgba(255, 216, 77, 0.34),
-    0 0 20px rgba(243, 203, 87, 0.22);
+.bet-shortcuts button {
+  height: 2.5rem;
 }
 
 .in-hand-card {
@@ -1148,9 +1147,13 @@ input[type="range"]::-moz-range-thumb {
 
 .action-buttons {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 14px;
+}
+
+#action-call {
+  grid-column: 1 / -1;
 }
 
 .players-list,
@@ -1237,29 +1240,25 @@ input[type="range"]::-moz-range-thumb {
   display: block;
   line-height: 1.2;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .in-hand-primary {
   color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .in-hand-secondary {
   margin-top: 3px;
   color: var(--accent-green);
   opacity: 0.9;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 
 .in-hand-role {
   margin-top: 2px;
   color: var(--text-muted);
   font-size: 0.72rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 
 .pots-list article,

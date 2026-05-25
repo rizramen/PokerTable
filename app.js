@@ -60,6 +60,7 @@ const elements = {
   startingStack: document.querySelector("#starting-stack"),
   startingStackSetting: document.querySelector("#starting-stack-setting"),
   totalRounds: document.querySelector("#total-rounds"),
+  totalRoundsLabel: document.querySelector("#total-rounds-label"),
   setupTitle: document.querySelector("#setup-title"),
   playerName: document.querySelector("#player-name"),
   addPlayer: document.querySelector("#add-player"),
@@ -71,10 +72,11 @@ const elements = {
   toCallValue: document.querySelector("#to-call-value"),
   streetLabel: document.querySelector("#street-label"),
   currentPlayerLabel: document.querySelector("#current-player-label"),
+  summaryPanel: document.querySelector(".summary-panel"),
+  boardPanel: document.querySelector(".board-panel"),
   actionTitle: document.querySelector("#action-title"),
   turnCard: document.querySelector("#turn-card"),
   roundIndicator: document.querySelector("#round-indicator"),
-  streetAction: document.querySelector("#street-action"),
   showdownActions: document.querySelector("#showdown-actions"),
   inHandList: document.querySelector("#in-hand-list"),
   startGame: document.querySelector("#start-game"),
@@ -86,11 +88,9 @@ const elements = {
   resetGame: document.querySelector("#reset-game"),
   boardCards: document.querySelector("#board-cards"),
   betAmount: document.querySelector("#bet-amount"),
-  betAmountDisplay: document.querySelector("#bet-amount-display"),
-  betPlus5: document.querySelector("#bet-plus-5"),
+  betMinus10: document.querySelector("#bet-minus-10"),
   betPlus10: document.querySelector("#bet-plus-10"),
   betPlus50: document.querySelector("#bet-plus-50"),
-  betPlus100: document.querySelector("#bet-plus-100"),
   betControls: document.querySelector(".bet-controls"),
   actionFold: document.querySelector("#action-fold"),
   actionCall: document.querySelector("#action-call"),
@@ -121,20 +121,18 @@ function bindEvents() {
 
   elements.startGame.addEventListener("click", startHand);
   elements.confirmSettings.addEventListener("click", confirmSettings);
-  elements.streetAction.addEventListener("click", progressStreet);
   elements.setupResetGame.addEventListener("click", resetGame);
-  elements.nextStreet.addEventListener("click", progressStreet);
-  elements.rotateDealer.addEventListener("click", rotateDealer);
-  elements.awardPot.addEventListener("click", awardPot);
+  elements.nextStreet?.addEventListener("click", progressStreet);
+  elements.rotateDealer?.addEventListener("click", rotateDealer);
+  elements.awardPot?.addEventListener("click", awardPot);
   elements.resetGame.addEventListener("click", resetGame);
   elements.betAmount.addEventListener("input", onBetSliderInput);
-  elements.betPlus5.addEventListener("click", () => adjustBetAmount(5));
+  elements.betMinus10.addEventListener("click", () => adjustBetAmount(-10));
   elements.betPlus10.addEventListener("click", () => adjustBetAmount(10));
   elements.betPlus50.addEventListener("click", () => adjustBetAmount(50));
-  elements.betPlus100.addEventListener("click", () => adjustBetAmount(100));
 
   elements.actionFold.addEventListener("click", () => applyAction("fold"));
-  elements.actionCall.addEventListener("click", () => onActionButtonClick("call"));
+  elements.actionCall.addEventListener("click", onCallButtonClick);
   elements.actionBet.addEventListener("click", () => onActionButtonClick("raise"));
   window.addEventListener("keydown", onGlobalKeydown);
 }
@@ -155,17 +153,21 @@ function confirmSettings() {
 
   state.settings.smallBlind = parsePositiveInt(elements.smallBlind.value, 5);
   state.settings.bigBlind = parsePositiveInt(elements.bigBlind.value, 10);
-  state.settings.totalRounds = parsePositiveInt(elements.totalRounds.value, 10);
+  state.settings.totalRounds += parsePositiveInt(elements.totalRounds.value, 0);
   state.editSettingsDraft = null;
   saveAndRender();
 }
 
 function readSettingsFromInputs() {
+  const totalRoundsValue = state.gameStarted
+    ? parsePositiveInt(elements.totalRounds.value, 0)
+    : parsePositiveInt(elements.totalRounds.value, 10);
+
   return {
     smallBlind: parsePositiveInt(elements.smallBlind.value, 5),
     bigBlind: parsePositiveInt(elements.bigBlind.value, 10),
     startingStack: parsePositiveInt(elements.startingStack.value, 500),
-    totalRounds: parsePositiveInt(elements.totalRounds.value, 10),
+    totalRounds: totalRoundsValue,
   };
 }
 
@@ -182,7 +184,10 @@ function onAddPlayer() {
   saveAndRender();
 }
 
-function addGooners() {
+function addGooners(event) {
+  event?.preventDefault();
+  event?.stopPropagation();
+
   const names = ["riz", "jannis", "danial", "ryan", "paddy"];
   const existingNames = new Set(state.players.map((player) => player.name.toLowerCase()));
 
@@ -191,7 +196,7 @@ function addGooners() {
       return;
     }
 
-    state.players.push(createPlayer(name));
+    state.players.push(createPlayer(name, state.settings.startingStack));
     existingNames.add(name);
   });
 
@@ -199,7 +204,10 @@ function addGooners() {
   saveAndRender();
 }
 
-function addWG() {
+function addWG(event) {
+  event?.preventDefault();
+  event?.stopPropagation();
+
   const names = ["jannis", "riz"];
   const existingNames = new Set(state.players.map((player) => player.name.toLowerCase()));
 
@@ -208,7 +216,7 @@ function addWG() {
       return;
     }
 
-    state.players.push(createPlayer(name));
+    state.players.push(createPlayer(name, state.settings.startingStack));
     existingNames.add(name);
   });
 
@@ -487,8 +495,9 @@ function completeHandWithWinner(winnerId, options = {}) {
   }
 
   const { autoRender = true, message = getWinnerMessage(winner.name) } = options;
+  const winningAmount = totalPot();
   winner.stats.handsWon += 1;
-  winner.stack += totalPot();
+  winner.stack += winningAmount;
   state.players.forEach((player) => {
     player.committed = 0;
     player.streetBet = 0;
@@ -502,7 +511,13 @@ function completeHandWithWinner(winnerId, options = {}) {
   state.handPhase = HAND_PHASES.WINNER;
   state.handMessage = message;
   state.showdownPots = [];
-  state.showdownResults = [];
+  state.showdownResults = [
+    {
+      winnerId: winner.id,
+      winnerName: winner.name,
+      amount: winningAmount,
+    },
+  ];
   logEvent(message);
 
   if (autoRender) {
@@ -522,6 +537,21 @@ function continueToNextRound() {
     state.dealerIndex = (state.dealerIndex + 1) % state.players.length;
     startHand(true);
   }
+}
+
+function addRoundsFromComplete() {
+  const choice = window.prompt("Add how many rounds?", "1");
+  if (choice === null) {
+    return;
+  }
+
+  const additionalRounds = parsePositiveInt(choice, 0);
+  if (additionalRounds <= 0) {
+    return;
+  }
+
+  state.settings.totalRounds += additionalRounds;
+  continueToNextRound();
 }
 
 function postBlind(index, amount, label) {
@@ -872,7 +902,9 @@ function renderSettings() {
   elements.smallBlind.value = settingsView.smallBlind;
   elements.bigBlind.value = settingsView.bigBlind;
   elements.startingStack.value = settingsView.startingStack;
-  elements.totalRounds.value = settingsView.totalRounds;
+  elements.totalRounds.value = state.gameStarted ? (state.editSettingsDraft?.totalRounds ?? 0) : state.settings.totalRounds;
+  elements.totalRounds.min = state.gameStarted ? "0" : "1";
+  elements.totalRoundsLabel.textContent = state.gameStarted ? "Add rounds" : "Total rounds";
   elements.setupTitle.textContent = state.gameStarted ? "Edit Game" : "Table";
   elements.startGame.classList.toggle("hidden", state.gameStarted);
   elements.confirmSettings.classList.toggle("hidden", !state.gameStarted);
@@ -883,6 +915,7 @@ function renderSettings() {
 }
 
 function renderVisibility() {
+  const isMatchComplete = state.handPhase === HAND_PHASES.COMPLETE;
   elements.appShell.classList.toggle("game-live", state.gameStarted);
   elements.appShell.classList.remove("phase-flop", "phase-turn", "phase-river", "phase-showdown");
   if (state.gameStarted) {
@@ -901,9 +934,12 @@ function renderVisibility() {
   });
   elements.hero.classList.toggle("hidden", state.gameStarted);
   elements.resetGame.classList.add("hidden");
+  elements.summaryPanel?.classList.toggle("hidden", isMatchComplete);
+  elements.boardPanel?.classList.toggle("hidden", isMatchComplete);
   const actionPanel = document.querySelector(".action-panel");
   actionPanel?.classList.toggle("showdown-mode", state.handPhase === HAND_PHASES.SHOWDOWN);
   actionPanel?.classList.toggle("winner-mode", state.handPhase === HAND_PHASES.WINNER);
+  actionPanel?.classList.toggle("complete-mode", isMatchComplete);
   elements.roundIndicator.classList.toggle("hidden", !state.gameStarted);
 }
 
@@ -938,6 +974,10 @@ function renderActionTitle() {
 }
 
 function renderSummary() {
+  if (!elements.streetLabel || !elements.potValue || !elements.toCallValue || !elements.currentPlayerLabel) {
+    return;
+  }
+
   const currentPlayer = state.currentPlayerIndex !== null ? state.players[state.currentPlayerIndex] : null;
   elements.streetLabel.textContent = state.handPhase === HAND_PHASES.DEALER ? "Waiting" : STREETS[state.streetIndex];
   elements.potValue.textContent = formatChips(totalPot());
@@ -947,11 +987,17 @@ function renderSummary() {
     : state.handPhase === HAND_PHASES.WINNER
       ? state.handMessage.replace(/\.$/, "")
       : "Round complete";
-  elements.awardPot.disabled =
-    totalPot() === 0 || [HAND_PHASES.SHOWDOWN, HAND_PHASES.WINNER, HAND_PHASES.COMPLETE].includes(state.handPhase);
+  if (elements.awardPot) {
+    elements.awardPot.disabled =
+      totalPot() === 0 || [HAND_PHASES.SHOWDOWN, HAND_PHASES.WINNER, HAND_PHASES.COMPLETE].includes(state.handPhase);
+  }
 }
 
 function renderBoard() {
+  if (!elements.boardCards) {
+    return;
+  }
+
   elements.boardCards.innerHTML = "";
   state.board.forEach((cardCode, index) => {
     const card = renderCard(cardCode, `B${index + 1}`);
@@ -1004,15 +1050,31 @@ function renderTurnCard() {
   }
 
   if (state.handPhase === HAND_PHASES.WINNER) {
+    const uniqueWinnerIds = [...new Set(state.showdownResults.map((result) => result.winnerId))];
+    const winnerPayoutMarkup = state.showdownResults.length
+      ? `
+          <div class="winner-result-list">
+            ${state.showdownResults
+              .map((result) => {
+                const amountLabel = `Amount won: ${formatChips(result.amount)}`;
+                return `<p>${uniqueWinnerIds.length > 1 ? `${result.winnerName} ${amountLabel}` : amountLabel}</p>`;
+              })
+              .join("")}
+          </div>
+        `
+      : "";
+
     const chipLeaders = playersWithChips();
     if (chipLeaders.length === 1) {
       const champion = chipLeaders[0];
+      const championHeadline = state.handMessage ? state.handMessage.replace(/\.$/, "") : `Congrats, ${champion.name}`;
       elements.turnCard.className = "turn-status-wrap";
       elements.turnCard.innerHTML = `
         <div class="turn-status-grid winner-results-grid">
           <div class="turn-status-tile turn-status-main winner-result-card">
             <p class="eyebrow">Champion</p>
-            <h3>Congrats, ${champion.name}</h3>
+            <h3>${championHeadline}</h3>
+            ${winnerPayoutMarkup}
             <p>You have all the chips.</p>
           </div>
           <div class="turn-status-tile winner-stacks-card">
@@ -1032,19 +1094,8 @@ function renderTurnCard() {
     }
 
     const resultTitle = state.showdownResults.length > 1 ? "Results" : "Winner";
-    const resultMarkup = state.showdownResults.length
-      ? `
-          <div class="winner-result-list">
-            ${state.showdownResults
-              .map(
-                (result) => `
-                  <p>${result.potLabel}: ${result.winnerName} (${formatChips(result.amount)})</p>
-                `,
-              )
-              .join("")}
-          </div>
-        `
-      : `<h3>${state.handMessage.replace(/\.$/, "")}</h3>`;
+    const winnerHeadline = `<h3>${state.handMessage.replace(/\.$/, "")}</h3>`;
+    const resultMarkup = `${winnerHeadline}${winnerPayoutMarkup}`;
     const stackRows = state.players
       .map(
         (player) => {
@@ -1088,15 +1139,16 @@ function renderTurnCard() {
       <div class="turn-status-grid">
         <div class="turn-status-tile turn-status-main">
           <p class="eyebrow">Match Complete</p>
-          <h3>All rounds played</h3>
-          <p>The configured round limit has been reached.</p>
+          <h3 class="complete-status-title">All rounds played</h3>
         </div>
-        <div class="turn-status-tile turn-status-pot">
-          <p class="eyebrow">Pot</p>
-          <h3>${formatChips(totalPot())}</h3>
+        <div class="turn-status-tile winner-stacks-card complete-actions-card">
+          <button id="complete-add-rounds" class="ghost-button" type="button">Add Rounds</button>
+          <button id="complete-new-game" type="button">New Game</button>
         </div>
       </div>
     `;
+    elements.turnCard.querySelector("#complete-add-rounds")?.addEventListener("click", addRoundsFromComplete);
+    elements.turnCard.querySelector("#complete-new-game")?.addEventListener("click", resetGame);
     return;
   }
 
@@ -1166,6 +1218,34 @@ function getNextStreetPrompt() {
   return "Round complete. Continue when ready.";
 }
 
+function getStreetAdvanceLabel() {
+  if (state.handPhase === HAND_PHASES.DEALER) {
+    return "Start Preflop";
+  }
+
+  if (state.streetIndex === 0) {
+    return "Start Flop";
+  }
+
+  if (state.streetIndex === 1) {
+    return "Start Turn";
+  }
+
+  if (state.streetIndex === 2) {
+    return "Start River";
+  }
+
+  return "Continue";
+}
+
+function canUseCallButtonForStreetAdvance() {
+  if (!state.gameStarted || state.currentPlayerIndex !== null) {
+    return false;
+  }
+
+  return state.handPhase === HAND_PHASES.DEALER || state.handPhase === HAND_PHASES.BETTING;
+}
+
 function renderBetControls() {
   const currentPlayer = state.currentPlayerIndex !== null ? state.players[state.currentPlayerIndex] : null;
   const toCall = currentPlayer ? Math.max(0, state.currentBet - currentPlayer.streetBet) : 0;
@@ -1198,57 +1278,31 @@ function renderBetControls() {
   elements.betAmount.dataset.allowedAmounts = JSON.stringify(allowedAmounts);
   elements.betAmount.dataset.callAmount = String(callAmount);
   elements.betAmount.dataset.minRaiseCommitment = String(minRaiseCommitment);
-  elements.betAmountDisplay.dataset.amount = String(nextValue);
   elements.betControls?.classList.toggle("bet-controls-disabled", !currentPlayer);
-  elements.betAmountDisplay.textContent = currentPlayer
-    ? nextValue === callAmount
-      ? callLabel
-      : `${nextValue}${isBetAllIn ? " · All-in" : ""}`
-    : "0";
-  elements.betAmountDisplay.classList.toggle("raise-ready", isRaiseSelected);
-  elements.actionCall.textContent = callLabel;
-  elements.actionCall.classList.toggle("ghost-button", !state.selectedAction || state.selectedAction !== "call");
-  elements.actionCall.classList.toggle("action-selected-call", state.selectedAction === "call");
+  const useCallForStreetAdvance = canUseCallButtonForStreetAdvance();
+  elements.actionCall.textContent = useCallForStreetAdvance ? getStreetAdvanceLabel() : callLabel;
+  elements.actionCall.classList.toggle(
+    "ghost-button",
+    useCallForStreetAdvance || !state.selectedAction || state.selectedAction !== "call",
+  );
+  elements.actionCall.classList.toggle("action-selected-call", !useCallForStreetAdvance && state.selectedAction === "call");
   elements.actionBet.textContent = betLabel;
   elements.actionBet.classList.toggle("action-selected-bet", isRaiseSelected);
   elements.actionFold.disabled = !currentPlayer;
-  elements.actionCall.disabled = !currentPlayer;
+  elements.actionCall.disabled = !currentPlayer && !useCallForStreetAdvance;
   elements.actionBet.disabled = !currentPlayer || !canRaiseAvailable;
 }
 
 function renderStreetAction() {
-  let label = "Start Preflop";
-  let disabled = false;
+}
 
-  if (state.handPhase === HAND_PHASES.IDLE) {
-    disabled = true;
-  } else if (state.handPhase === HAND_PHASES.COMPLETE) {
-    label = "Match Complete";
-    disabled = true;
-  } else if (state.handPhase === HAND_PHASES.DEALER) {
-    label = "Start Preflop";
-  } else if (state.handPhase === HAND_PHASES.SHOWDOWN) {
-    label = "Showdown";
-    disabled = true;
-  } else if (state.handPhase === HAND_PHASES.WINNER) {
-    label = "Hand Complete";
-    disabled = true;
-  } else if (state.currentPlayerIndex !== null) {
-    label = `${STREETS[state.streetIndex]} In Progress`;
-    disabled = true;
-  } else if (state.streetIndex === 0) {
-    label = "Start Flop";
-  } else if (state.streetIndex === 1) {
-    label = "Start Turn";
-  } else if (state.streetIndex === 2) {
-    label = "Start River";
-  } else {
-    label = "Showdown";
-    disabled = true;
+function onCallButtonClick() {
+  if (canUseCallButtonForStreetAdvance()) {
+    progressStreet();
+    return;
   }
 
-  elements.streetAction.textContent = label;
-  elements.streetAction.disabled = disabled;
+  onActionButtonClick("call");
 }
 
 function renderShowdownActions() {
@@ -1337,7 +1391,7 @@ function renderInHandOverview() {
       badge.classList.add("in-hand-acting");
     }
     const amountLabel = player.status === PLAYER_STATUSES.ALL_IN ? "All-in" : `${player.streetBet} this round`;
-    const roleMarkup = roleLabels.length ? `<span class="in-hand-role">${roleLabels.join(" · ")}</span>` : "";
+    const roleMarkup = `<span class="in-hand-role">${roleLabels.join(" · ") || "\u00A0"}</span>`;
     badge.innerHTML = `
       <span class="in-hand-primary">${player.name}</span>
       <span class="in-hand-secondary">${amountLabel}</span>
@@ -1397,6 +1451,21 @@ function findClosestBetIndex(amounts, target) {
   return bestIndex;
 }
 
+function findCeilingBetIndex(amounts, target) {
+  const index = amounts.findIndex((amount) => amount >= target);
+  return index === -1 ? Math.max(amounts.length - 1, 0) : index;
+}
+
+function findFloorBetIndex(amounts, target) {
+  for (let index = amounts.length - 1; index >= 0; index -= 1) {
+    if (amounts[index] <= target) {
+      return index;
+    }
+  }
+
+  return 0;
+}
+
 function getSelectedBetAmount() {
   return Math.max(0, state.betControlAmount ?? 0);
 }
@@ -1424,14 +1493,22 @@ function syncBetControlState(currentPlayer, toCall, callAmount, minRaiseCommitme
   }
 }
 
-function setSelectedBetAmount(amount) {
+function setSelectedBetAmount(amount, strategy = "closest") {
   const allowedAmounts = JSON.parse(elements.betAmount.dataset.allowedAmounts ?? "[]");
   if (!allowedAmounts.length) {
     state.betControlAmount = 0;
     return;
   }
 
-  const nextIndex = findClosestBetIndex(allowedAmounts, amount);
+  let nextIndex = 0;
+  if (strategy === "ceil") {
+    nextIndex = findCeilingBetIndex(allowedAmounts, amount);
+  } else if (strategy === "floor") {
+    nextIndex = findFloorBetIndex(allowedAmounts, amount);
+  } else {
+    nextIndex = findClosestBetIndex(allowedAmounts, amount);
+  }
+
   state.betControlAmount = allowedAmounts[nextIndex] ?? allowedAmounts[0];
 }
 
@@ -1462,7 +1539,9 @@ function adjustBetAmount(increment) {
   }
 
   const maxAmount = allowedAmounts[allowedAmounts.length - 1];
-  setSelectedBetAmount(Math.max(callAmount, Math.min(targetAmount, maxAmount)));
+  const clampedTarget = Math.max(callAmount, Math.min(targetAmount, maxAmount));
+  const selectionStrategy = increment < 0 ? "floor" : "ceil";
+  setSelectedBetAmount(clampedTarget, selectionStrategy);
   state.selectedAction = state.betControlAmount > callAmount ? "raise" : "call";
   renderBetControls();
 }
@@ -1520,8 +1599,8 @@ function onGlobalKeydown(event) {
       return;
     }
 
-    if (!elements.streetAction.disabled) {
-      elements.streetAction.click();
+    if (canUseCallButtonForStreetAdvance()) {
+      onCallButtonClick();
     }
     return;
   }
@@ -1733,7 +1812,7 @@ function renderSetupPlayers() {
     if (addChipsButton) {
       const amountInput = pill.querySelector(".setup-player-rebuy-amount");
       addChipsButton.addEventListener("click", () =>
-        queuePlayerRebuy(player.id, parsePositiveInt(amountInput?.value, state.settings.startingStack)),
+        addPlayerChips(player.id, parsePositiveInt(amountInput?.value, state.settings.startingStack)),
       );
     }
     pill.querySelector(".setup-player-delete").addEventListener("click", () => {
@@ -1774,8 +1853,6 @@ function movePlayerByOffset(playerId, offset) {
 }
 
 function renderSetupPlayerStats(player) {
-  const pendingRebuy = state.pendingRebuys[player.id] || 0;
-
   return `
     <div class="setup-player-stats setup-player-stats-compact">
       <div class="setup-player-stat">
@@ -1783,8 +1860,8 @@ function renderSetupPlayerStats(player) {
         <p class="setup-player-stat-value">${formatChips(player.stack)}</p>
       </div>
       <div class="setup-player-stat">
-        <p class="setup-player-stat-label">Chip Queue</p>
-        <p class="setup-player-stat-value">${pendingRebuy > 0 ? `+${pendingRebuy}` : "0"}</p>
+        <p class="setup-player-stat-label">Status</p>
+        <p class="setup-player-stat-value">${player.status}</p>
       </div>
     </div>
     <div class="setup-player-rebuy setup-player-rebuy-compact">
@@ -1798,7 +1875,7 @@ function renderSetupPlayerStats(player) {
           placeholder="${state.settings.startingStack}"
           value="${state.settings.startingStack}"
         />
-        <button class="setup-player-control setup-player-add-chips" type="button">Queue</button>
+        <button class="setup-player-control setup-player-add-chips" type="button">Add Chips</button>
       </div>
     </div>
   `;
@@ -1829,8 +1906,21 @@ function toggleExpandedPlayerStats(playerId) {
   saveAndRender();
 }
 
-function queuePlayerRebuy(playerId, amount) {
-  state.pendingRebuys[playerId] = (state.pendingRebuys[playerId] || 0) + amount;
+function addPlayerChips(playerId, amount) {
+  const player = state.players.find((entry) => entry.id === playerId);
+  const chipsToAdd = parsePositiveInt(amount, 0);
+  if (!player || chipsToAdd <= 0) {
+    return;
+  }
+
+  player.stack += chipsToAdd;
+
+  if (!state.handActive) {
+    player.status = player.stack > 0 ? PLAYER_STATUSES.ACTIVE : PLAYER_STATUSES.OUT;
+    player.canRaise = player.status === PLAYER_STATUSES.ACTIVE;
+  }
+
+  logEvent(`${player.name} added ${chipsToAdd} chips.`);
   saveAndRender();
 }
 

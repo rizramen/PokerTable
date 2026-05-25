@@ -67,7 +67,7 @@
                 <input id="starting-stack" name="startingStack" type="number" min="1" step="1" value="500" />
               </label>
               <label>
-                Total rounds
+                <span id="total-rounds-label">Total rounds</span>
                 <input id="total-rounds" name="totalRounds" type="number" min="1" step="1" value="10" />
               </label>
             </form>
@@ -91,44 +91,7 @@
           </div>
         </section>
 
-        <section class="panel summary-panel game-panel details-panel">
-          <div class="summary-grid">
-            <article>
-              <p class="label">Street</p>
-              <p id="street-label" class="value">Preflop</p>
-            </article>
-            <article>
-              <p class="label">Pot</p>
-              <p id="pot-value" class="value">0</p>
-            </article>
-            <article>
-              <p class="label">To Call</p>
-              <p id="to-call-value" class="value">0</p>
-            </article>
-            <article>
-              <p class="label">Next Up</p>
-              <p id="current-player-label" class="value">Add players</p>
-            </article>
-          </div>
-
-          <div class="summary-actions">
-            <button id="next-street" class="ghost-button" type="button">Next Street</button>
-            <button id="rotate-dealer" class="ghost-button" type="button">Move Dealer</button>
-            <button id="award-pot" class="ghost-button" type="button">Award Pot</button>
-          </div>
-        </section>
-
-        <section class="panel board-panel game-panel details-panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Cards</p>
-              <h2>Board</h2>
-            </div>
-          </div>
-          <div id="board-cards" class="board-cards"></div>
-        </section>
-
-        <section class="panel action-panel game-panel">
+        <section class="panel action-panel game-panel hidden">
           <div class="panel-header">
             <h2 id="action-title">Current Move</h2>
             <div id="round-indicator" class="round-indicator hidden"></div>
@@ -138,41 +101,32 @@
             <p>No active hand yet.</p>
           </div>
 
-          <div class="action-buttons">
-            <button id="action-fold" class="danger" type="button">Fold</button>
-            <button id="action-call" class="ghost-button" type="button">Check</button>
-            <button id="action-bet" type="button">Bet / Raise</button>
-          </div>
-
-          <div class="bet-controls turn-card">
-            <label class="bet-label-row">
-              <span>Bet amount</span>
-              <span id="bet-amount-display" class="slider-value">10</span>
-            </label>
-            <div class="bet-slider-wrap">
-              <input id="bet-amount" type="range" min="0" max="10" step="1" value="10" />
-            </div>
-            <div class="bet-shortcuts">
-              <button id="bet-plus-5" class="ghost-button" type="button">+5</button>
-              <button id="bet-plus-10" class="ghost-button" type="button">+10</button>
-              <button id="bet-plus-50" class="ghost-button" type="button">+50</button>
-              <button id="bet-plus-100" class="ghost-button" type="button">+100</button>
-            </div>
-          </div>
-
-          <div class="live-stage-actions">
-            <button id="street-action" class="ghost-button" type="button">Start Preflop</button>
-          </div>
-
-          <div id="showdown-actions" class="showdown-actions hidden"></div>
-
           <div class="turn-card in-hand-card">
             <p class="eyebrow">Still In Hand</p>
             <div id="in-hand-list" class="in-hand-list"></div>
           </div>
+
+          <div class="bet-controls turn-card">
+            <div class="bet-slider-wrap">
+              <input id="bet-amount" type="range" min="0" max="10" step="1" value="10" />
+            </div>
+            <div class="bet-shortcuts">
+              <button id="bet-minus-10" class="ghost-button" type="button">-10</button>
+              <button id="bet-plus-50" class="ghost-button" type="button">+50</button>
+              <button id="bet-plus-10" class="ghost-button" type="button">+10</button>
+            </div>
+          </div>
+
+          <div class="action-buttons">
+            <button id="action-call" class="ghost-button" type="button">Check</button>
+            <button id="action-fold" class="danger" type="button">Fold</button>
+            <button id="action-bet" type="button">Bet / Raise</button>
+          </div>
+
+          <div id="showdown-actions" class="showdown-actions hidden"></div>
         </section>
 
-        <section class="panel game-panel details-panel">
+        <section class="panel game-panel details-panel hidden">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Seats</p>
@@ -182,7 +136,7 @@
           <div id="players-list" class="players-list"></div>
         </section>
 
-        <section class="panel game-panel details-panel">
+        <section class="panel game-panel details-panel hidden">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Pots</p>
@@ -192,7 +146,7 @@
           <div id="pots-list" class="pots-list"></div>
         </section>
 
-        <section class="panel game-panel details-panel">
+        <section class="panel game-panel details-panel hidden">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Log</p>
