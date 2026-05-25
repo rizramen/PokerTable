@@ -1155,6 +1155,7 @@ input[type="range"]::-moz-range-thumb {
 #action-call {
   grid-column: 1 / -1;
   min-height: 5.8rem;
+  font-size: 1.5rem;
 }
 
 .players-list,
